@@ -17969,6 +17969,8 @@ function buildAdminPane() {
 }
 function pcLinkBase() { return location.origin + location.pathname; }
 function pcShow(on) { var sec = $("#pcSec"); if (sec) sec.hidden = !on; }
+var PC_HIDE_MS = 30 * 864e5;
+function pcHidden() { try { var v = +localStorage.getItem("yz_pc_hide") || 0; return v > 0 && Date.now() - v < PC_HIDE_MS; } catch (e) { return false; } }
 function drawPcLink() {
   var box = $("#pcBox"); if (!box) return; box.innerHTML = ""; pcShow(false);
   if (!(window.crypto && crypto.subtle && typeof crypto.subtle.importKey === "function" && typeof crypto.subtle.deriveKey === "function")) return;
@@ -17996,13 +17998,14 @@ function pcDraw(box, r, blob, blob7, xx) {
   }, "sm pri pcdl");
   var ckm = h("span", { class: "hint", id: "pcckm", role: "status", "aria-live": "polite" }, [""]);
   var ck = btn("🔄 檢查 GitHub 上的 cfg.js", function () { pcCheck(true); }, "sm pcck");
+  var hd = btn("🙈 這段先收起來（30 天）", function () { try { localStorage.setItem("yz_pc_hide", String(Date.now())); } catch (e) {  } pcShow(false); toast("收起來了：這台 30 天內不再出現（cfg.js 換好了本來就會自己消失）"); }, "sm pchide");
   box.appendChild(h("p", { class: "pcst warn", id: "pcst" }, ["⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。"]));
-  box.appendChild(h("div", { class: "pcurlrow" }, [dl, ck, ckm]));
+  box.appendChild(h("div", { class: "pcurlrow" }, [dl, ck, hd, ckm]));
   var pcCheck = function (say) {
     ck.disabled = true; ckm.textContent = say ? "檢查中…" : "";
     pcGhCheck(k7, xx).then(function (good) {
       ck.disabled = false;
-      if (good === on7) { pcShow(!good); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
+      if (good === on7) { pcShow(!good && !pcHidden()); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
       call("hbEntry", [good ? 1 : -1]).then(function (r2) {
         if (!adOk(r2)) return;
         toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的短碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的短碼先改回長的（照樣能用），請照 ⑥ 換一次");
