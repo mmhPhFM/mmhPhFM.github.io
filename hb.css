@@ -538,6 +538,8 @@ figure.anim figcaption{font-size:13px;color:var(--ink2);margin-top:4px}
   .dcard .dinfo{grid-area:i}
   .dcard .dphoto{grid-area:p;width:220px;max-width:none;justify-self:end}
 }
+.art .drugs.lyn{display:grid;grid-template-columns:repeat(var(--lyn,2),minmax(0,1fr));align-items:start}
+.drugs.lyn>.dcw{container-type:inline-size;min-width:0;display:flex;flex-direction:column}
 .dge{display:flex;flex-direction:column;gap:8px}
 .dge .dgr{display:flex;flex-direction:column;border:1px solid #E1E5EA;border-radius:10px;max-height:320px;overflow:auto;background:#fff}
 .dge .dgr:empty{display:none}
@@ -1649,7 +1651,7 @@ body:has(.pg>.mq.mqb) .toast{bottom:calc(var(--mqh, 34px) + 14px + env(safe-area
 .rbk-flow .chsec.lv3 .chsec-h{padding-left:20px;border-left:4px solid #E3D8C3}
 .rbk-flow h2,.rbk-flow h3,.rbk-flow h4{break-after:avoid}
 .rbk-flow figure,.rbk-flow .note,.rbk-flow .xlink,.rbk-flow .pgline,.rbk-flow .drugc,.rbk-flow .rbox,.rbk-flow .ycp,.rbk-flow .anim,.rbk-flow .drawfig,.rbk-flow .box,.rbk-flow tr{break-inside:avoid}
-.rbk-flow .dcard,.rbk-flow .pgkeep{break-inside:avoid}
+.rbk-flow .dcard,.rbk-flow .pgkeep,.rbk-flow .dcw{break-inside:avoid}
 .rbk-flow .pgbrk{break-before:column}
 .rbk-flow img{max-height:calc(var(--fh,600px) - 64px);object-fit:contain}
 .rbk-flow figure img,.rbk-flow .lad figure.lim img{width:min(100%,var(--iw,100%))!important;height:auto!important;aspect-ratio:var(--ar,4 / 3)!important;object-fit:contain}
@@ -2135,6 +2137,7 @@ body:has(.pg>.mq.mqb) .lgnote{bottom:calc(var(--mqh, 34px) + 58px + env(safe-are
 .pbcv .pbh{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:2px solid #fff;border-radius:8px;background:#E4572E;color:#fff;font:800 15px/1 system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:grab;touch-action:none}
 .pbcv .pbh.mv{transform:translate(-100%,0)}
 .pbcv .pbh.rz{background:#2563EB;cursor:nwse-resize}
+.pbcv .pbh.bw{background:#0F8A6B;cursor:ew-resize;width:22px;height:34px;border-radius:999px}
 .pbcv .pbh:active{cursor:grabbing}
 .pbcv .pbtip{position:absolute;white-space:nowrap;padding:4px 10px;border-radius:999px;background:#13312F;color:#fff;font:700 12.5px/1.4 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);font-style:normal}
 .pbcv .pbtip.no{background:#B91C1C}

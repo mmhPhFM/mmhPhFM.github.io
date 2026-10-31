@@ -4876,7 +4876,23 @@ function xlOpen(u) {
 }
 function lyDeco(el, b, L) {
   if (L.fs !== 100) { el.style.fontSize = (L.fs / 100).toFixed(2) + "em"; el.classList.add("lyfs"); }
-  if (L.w < 100 && (b.t === "img" || b.t === "anim")) { el.style.width = L.w + "%"; el.style.marginLeft = el.style.marginRight = "auto"; el.classList.add("lyw"); }
+  if (b.t === "img" || b.t === "anim") { if (L.w < 100) { el.style.width = L.w + "%"; el.style.marginLeft = el.style.marginRight = "auto"; el.classList.add("lyw"); } return; }
+  if (b.t === "link" && el.querySelector(".xemb")) return;
+  lySz(el, L.sc || 100, L.w || 100);
+  if (b.t === "drug") lyDrugN(el, L.n || 1);
+}
+function lySz(el, sc, w) {
+  var vw = Math.min(100, Math.round(w * sc) / 100), ind = el.classList.contains("bind");
+  el.style.zoom = sc !== 100 ? String(sc / 100) : "";
+  el.classList.toggle("lysc", sc !== 100);
+  if (vw < 100) { el.style.width = vw + "%"; el.style.marginRight = "auto"; if (!ind) el.style.marginLeft = "auto"; el.classList.add("lyw"); }
+  else if (el.classList.contains("lyw")) { el.style.width = ""; el.style.marginRight = ""; if (!ind) el.style.marginLeft = ""; el.classList.remove("lyw"); }
+}
+function lyDrugN(el, n) {
+  var cs = Array.prototype.filter.call(el.children, function (c) { return c.classList.contains("dcard"); });
+  if (!(n > 1) || cs.length < 2) return;
+  el.classList.add("lyn"); el.style.setProperty("--lyn", String(n));
+  cs.forEach(function (c) { var w = h("div", { class: "dcw" }); el.insertBefore(w, c); w.appendChild(c); });
 }
 var KIND_NAME_W = { text: "文字", ladder: "條文", table: "表格", img: "圖片", anim: "動畫", drug: "藥品卡片", link: "連結" };
 function webArticle(ch, t, o) {
@@ -4907,7 +4923,7 @@ function webArticle(ch, t, o) {
     var bi = _yzBlockInd_(b);
     if (bi) { el.style.marginLeft = (bi * 1.6).toFixed(1) + "em"; el.classList.add("bind"); }
     var lead = !shown || afterHd;
-    var L = o.ly ? { pb: lyVal(b, o.ly, "pb"), kp: lyVal(b, o.ly, "kp"), sb: lyVal(b, o.ly, "sb"), sw: lyVal(b, o.ly, "sw"), w: lyVal(b, o.ly, "w"), fs: lyVal(b, o.ly, "fs"), hd: lyVal(b, o.ly, "hd") } : null;
+    var L = o.ly ? { pb: lyVal(b, o.ly, "pb"), kp: lyVal(b, o.ly, "kp"), sb: lyVal(b, o.ly, "sb"), sw: lyVal(b, o.ly, "sw"), w: lyVal(b, o.ly, "w"), fs: lyVal(b, o.ly, "fs"), hd: lyVal(b, o.ly, "hd"), sc: lyVal(b, o.ly, "sc"), n: lyVal(b, o.ly, "n") } : null;
     if (L && L.hd === 1) {
       if (o.mark) { var mk = h("div", { class: "lyhd-mk" }, [h("span", { class: "lyhd-b", title: "翻頁的時候隱藏（藥師翻頁看不到；往下捲、LINE 照常）：點一下可以取消" }, ["🙈 隱藏了：第 " + (bIdx + 1) + " 塊（" + (KIND_NAME_W[b.t] || "內容") + "）"])]); o.mark(mk, b, { lead: false, t: t, hid: true }); a.appendChild(mk); }
       sbL = null;
@@ -7941,8 +7957,8 @@ function bkPref() {
   return CFG.webBook === false ? "scroll" : "book";
 }
 
-var LY_DEF = { pb: 0, kp: 0, sb: 0, sw: 50, w: 100, h: 100, fs: 100, sp: 0, hd: 0 };
-var LY_INH = { t: { pb: 1, kp: 1, sb: 1, sw: 1, w: 1, h: 1, fs: 1, sp: 1, hd: 1 }, m: { pb: 1, kp: 1 } };
+var LY_DEF = { pb: 0, kp: 0, sb: 0, sw: 50, w: 100, h: 100, fs: 100, sp: 0, hd: 0, sc: 100, n: 1 };
+var LY_INH = { t: { pb: 1, kp: 1, sb: 1, sw: 1, w: 1, h: 1, fs: 1, sp: 1, hd: 1, sc: 1, n: 1 }, m: { pb: 1, kp: 1 } };
 function lyRaw(o, d, k) { var s = o && o.ly && o.ly[d]; return s && s[k] !== undefined ? s[k] : undefined; }
 function lyGet(o, d, k) {
   var v = lyRaw(o, d, k);
@@ -15143,6 +15159,7 @@ function bk46Ok() { return backAtLeast(12, 13); }
 function bk52Ly() { return backAtLeast(12, 19); }
 function bk53Sp() { return backAtLeast(12, 20); }
 function bk54Hd() { return backAtLeast(12, 21); }
+function bk62Sz() { return backAtLeast(12, 26); }
 function bk46Warn(what) {
   modal({ title: "⚠ 還不能用「" + what + "」", lines: ["藥戰手冊專案（Apps Script）的「02_藥戰手冊」還是舊的（第 46 批以前）：設了存不進去。", "請先把第 46 批的 02 貼上，「部署 → 管理部署作業 → ✏️ → 版本選新版本 → 部署」，再重新整理這一頁。"], buttons: [{ label: "知道了", cls: "sm pri" }] });
 }
@@ -15220,7 +15237,7 @@ function pbOpen(focus) {
 function pbHint() {
   var el = $("#pbHint"); if (!el) return;
   el.textContent = PBV.cv
-    ? "🎨 畫布模式（" + pbDevName() + "）：滑鼠移到一塊上面，拖「⠿」：拖到下一頁＝從這一塊換頁、拖回上一頁＝拿掉這裡的換頁、拖到旁邊那一塊上＝左右並排；圖、嵌入框拉右下角「↘」改大小（嵌入框拉到隔壁頁＝↔ 跨兩頁）；上面「A− A＋」＝那一頁的字。點一塊有更多選項。" + (pbLy() === "t" ? "平板沒另外排的地方照電腦的。" : pbLy() === "m" ? "手機：換頁照電腦的；並排、大小、字要另外排。" : "") + "改了一樣要「儲存」（或等自動存檔）；只有翻頁用（捲動、LINE 照舊）。"
+    ? "🎨 畫布模式（" + pbDevName() + "）：滑鼠移到一塊上面，拖「⠿」：拖到下一頁＝從這一塊換頁、拖回上一頁＝拿掉這裡的換頁、拖到旁邊那一塊上＝左右並排；圖、嵌入框拉右下角「↘」改大小（嵌入框拉到隔壁頁＝↔ 跨兩頁）；" + (bk62Sz() ? "其他每一塊（藥品卡片、表格、文字…）：右下角「↘」＝整塊等比例變大變小（字、圖一起），右邊「⟷」＝只拉寬（字的大小不變）；" : "") + "上面「A− A＋」＝那一頁的字。點一塊有更多選項" + (bk62Sz() ? "（藥品卡片：一排放幾張）" : "") + "。" + (pbLy() === "t" ? "平板沒另外排的地方照電腦的。" : pbLy() === "m" ? "手機：換頁照電腦的；並排、大小、字要另外排。" : "") + "改了一樣要「儲存」（或等自動存檔）；只有翻頁用（捲動、LINE 照舊）。"
     : "點一塊內容（或標題）：選「✂ 從這裡換到新的一頁」或「🔗 這一塊不要切開」。藥品卡片本來就不會切開。改了跟其他修改一樣，要「儲存」（或等自動存檔）藥師才看得到；LINE 不受影響。每個人的螢幕大小不一樣，自然換頁的地方會差一點；你設的換頁每個人都一樣。" + (bk52Ly() ? "電腦、平板、手機各設各的（平板沒設的照電腦的）。要並排、拉大小、調字：按上面「🎨 畫布模式」。" : "");
 }
 function pbClrLbl() {
@@ -15449,7 +15466,16 @@ function pbMarks() {
   var tag = function (el, txt) { var r = el.getClientRects()[0]; if (r) add("tg c", r.left - fr.left, r.top - fr.top - 9, null, null, txt); };
   $$(".lysb", flow).forEach(function (el) { var r = el.getBoundingClientRect(); add("sbx", r.left - fr.left - 3, r.top - fr.top - 3, r.width + 6, r.height + 6); tag(el, "▥ 左右並排"); });
   $$(".lyfs", flow).forEach(function (el) { tag(el, "字 " + Math.round(parseFloat(el.style.fontSize) * 100) + "%"); });
-  $$(".lyw, .xemb.lyx", flow).forEach(function (el) {
+  var szTag = function (b) {
+    var d = pbLy(), a = [], sc = lyVal(b, d, "sc"), w = lyVal(b, d, "w"), n = b.t === "drug" ? lyVal(b, d, "n") : 1;
+    if (sc !== 100) a.push("整塊 " + sc + "%");
+    if (w !== 100) a.push("寬 " + (w === 50 ? "一半" : w === 67 ? "2/3" : w === 75 ? "3/4" : w + "%"));
+    if (n > 1) a.push("一排 " + n + " 張");
+    return a.join("、");
+  };
+  $$(".lyw, .lysc, .lyn, .xemb.lyx", flow).forEach(function (el) {
+    var b = el._pbB;
+    if (b && b.t !== "img" && b.t !== "anim" && !el.classList.contains("xemb")) { var tt = szTag(b); if (tt) tag(el, tt); return; }
     var sp = el.classList.contains("lysp"), w = sp ? (el.classList.contains("lysp-on") ? "↔ 跨兩頁" : "↔ 跨兩頁（兩頁的時候）") : el.style.width ? "寬 " + el.style.width : "", hh = /\* ([\d.]+)\)/.exec(el.style.height || "");
     tag(el, w + (w && hh ? "、" : "") + (hh ? "高 " + Math.round(+hh[1] * 100) + "% 頁" : ""));
   });
@@ -15561,9 +15587,19 @@ function pbPick(el, cx, cy, xe) {
             if (fk2 && fk2 !== "img" && bk52Ly()) items.push(tog("▯▯ 一打開兩頁並排（藥師看的時候）", X.two === true, function (on) { pbLyTwo(X, xe, on); }, "pbm-two"));
           } else if (b.t === "img" || b.t === "anim") {
             items.push(choose("寬度：", [[30, "30%"], [50, "50%"], [70, "70%"], [100, "100%"]], lyVal(b, d, "w"), function (v) { pbLyDo(b, "w", v, "寬度 " + v + "%"); }, "pbm-w"));
-          }
+          } else if (bk62Sz()) {
+            var sc0 = lyVal(b, d, "sc"), bw0 = lyVal(b, d, "w"), SCV = [[60, "60%"], [75, "75%"], [90, "90%"], [100, "100%"], [120, "120%"]], BWV = [[50, "一半"], [67, "2/3"], [75, "3/4"], [100, "整欄"]];
+            var has = function (a, v) { return a.some(function (o) { return o[0] === v; }); };
+            items.push(choose("整塊大小（字、圖一起）" + (has(SCV, sc0) ? "" : "，現在 " + sc0 + "%") + "：", SCV, sc0, function (v) { pbLyDo(b, "sc", v, "整塊大小 " + v + "%（字、圖一起）"); }, "pbm-sc"));
+            items.push(choose("寬度（字的大小不變）" + (has(BWV, bw0) ? "" : "，現在 " + bw0 + "%") + "：", BWV, bw0, function (v) { pbLyDo(b, "w", v, "寬度 " + (v === 100 ? "整欄" : v + "%") + "（字的大小不變）"); }, "pbm-bw"));
+            if (b.t === "drug") {
+              var nd = (b.items || []).filter(function (x) { return x && x.code; }).length;
+              if (nd >= 2) items.push(choose("一排放幾張：", [[1, "1 張"], [2, "2 張"], [3, "3 張"]], lyVal(b, d, "n"), function (v) { pbLyDo(b, "n", v, "藥品卡片一排 " + v + " 張"); }, "pbm-dn"));
+              else items.push(note("這一塊只有 1 張藥品卡片：要兩張並排＝「▥ 跟下一塊左右並排」，或在編輯器把藥放進同一塊"));
+            }
+          } else items.push(note("整塊大小、寬度" + (b.t === "drug" ? "、一排放幾張" : "") + "：Apps Script 的 02 換成第 62 批以後才可以選"));
           var fs = lyVal(b, d, "fs");
-          items.push(h("div", { class: "pbm-r pbm-fs", role: "group", "aria-label": "這一塊的字" }, [h("span", { class: "pbm-l" }, ["這一塊的字："]),
+          if (b.t !== "drug") items.push(h("div", { class: "pbm-r pbm-fs", role: "group", "aria-label": "這一塊的字" }, [h("span", { class: "pbm-l" }, ["這一塊的字："]),
             h("button", { type: "button", class: "btn sm pbm-v", "aria-label": "字小一點", onclick: function () { pbLyDo(b, "fs", Math.max(60, fs - 10), "字 " + Math.max(60, fs - 10) + "%"); } }, ["A−"]),
             h("b", { class: "pbm-fv" }, [fs + "%"]),
             h("button", { type: "button", class: "btn sm pbm-v", "aria-label": "字大一點", onclick: function () { pbLyDo(b, "fs", Math.min(180, fs + 10), "字 " + Math.min(180, fs + 10) + "%"); } }, ["A＋"])]));
@@ -15746,7 +15782,29 @@ function pbCvShow(el) {
     rz.style.left = Math.round(lr.right - fr.left - 22) + "px"; rz.style.top = Math.round(lr.bottom - fr.top - 22) + "px";
     rz.addEventListener("pointerdown", function (e) { pbDragStart(e, sz, "rz"); });
     L.appendChild(rz);
+  } else if (pbSzBlock(el)) {
+    var rs2 = pbVisRects(el), r1 = rs2[0] || el.getBoundingClientRect(), r2 = rs2[rs2.length - 1] || r1, fr2 = PBV.flow.getBoundingClientRect();
+    var sc = d.createElement("button"); sc.type = "button"; sc.className = "pbh rz sc"; sc.textContent = "↘"; sc.title = "拉：整塊等比例變大變小（字、圖一起）";
+    sc.style.left = Math.round(r2.right - fr2.left - 22) + "px"; sc.style.top = Math.round(r2.bottom - fr2.top - 22) + "px";
+    sc.addEventListener("pointerdown", function (e) { pbDragStart(e, el, "sc"); });
+    L.appendChild(sc);
+    var bw = d.createElement("button"); bw.type = "button"; bw.className = "pbh bw"; bw.textContent = "⟷"; bw.title = "拉：只改寬（字的大小不變）";
+    bw.style.left = Math.round(r1.right - fr2.left - 11) + "px"; bw.style.top = Math.round(r1.top - fr2.top + Math.min(r1.height, PBV.g.fh) / 2 - 17) + "px";
+    bw.addEventListener("pointerdown", function (e) { pbDragStart(e, el, "bw"); });
+    L.appendChild(bw);
   }
+}
+function pbVisRects(el) {
+  var vp = PBV.doc && PBV.doc.querySelector(".rbk-vp"), q = vp && vp.getBoundingClientRect();
+  var rs = Array.prototype.filter.call(el.getClientRects(), function (r) { return r.width > 0 && r.height > 0; });
+  var vis = q ? rs.filter(function (r) { return r.left >= q.left - 2 && r.left < q.right - 2; }) : rs;
+  return vis.length ? vis : rs;
+}
+function pbSzBlock(el) {
+  var b = el && el._pbB;
+  if (!b || !bk62Sz() || b.mgh || (el._pbI || {}).hid || el.classList.contains("lyhd-mk")) return false;
+  if (b.t === "img" || b.t === "anim") return false;
+  return !(b.t === "link" && $("[data-pbx]", el));
 }
 function pbSizable(el) {
   var b = el._pbB; if (!b) return null;
@@ -15778,6 +15836,13 @@ function pbDragStart(e, el, kind) {
     D.st = { w: el.style.width, h: el.style.height, ml: el.style.marginLeft, mr: el.style.marginRight };
     D.spOk = D.xe && pbSpOk(el);
     if (D.spOk) { var cg = 2 * PBV.g.X + PBV.g.G, off = Math.max(0, r.left - fr.left - pbCol(el) * PBV.g.pitch); D.spW = Math.max(40, Math.floor(2 * PBV.g.fw + cg - off)); }
+  }
+  if (kind === "sc" || kind === "bw") {
+    var dd = pbLy();
+    D.sc0 = lyVal(el._pbB, dd, "sc"); D.bw0 = lyVal(el._pbB, dd, "w"); D.v = kind === "sc" ? D.sc0 : D.bw0;
+    var r0 = pbVisRects(el)[0]; if (r0) D.w0 = r0.width;
+    D.base = pbBaseW(el);
+    D.st = { z: el.style.zoom, w: el.style.width, ml: el.style.marginLeft, mr: el.style.marginRight, lw: el.classList.contains("lyw"), lc: el.classList.contains("lysc") };
   }
   var tip = PBV.doc.createElement("i"); tip.className = "pbtip"; PBV.cvl.appendChild(tip); D.tip = tip;
   if (kind === "mv") {
@@ -15814,6 +15879,17 @@ function pbDragMove(e) {
   var dx = e.clientX - D.x0, dy = e.clientY - D.y0, fr = PBV.flow.getBoundingClientRect(), g = PBV.g;
   if (Math.abs(dx) + Math.abs(dy) > 4) D.moved = true;
   var px = e.clientX - fr.left, py = e.clientY - fr.top;
+  if (D.kind === "sc" || D.kind === "bw") {
+    var v = D.kind === "sc" ? Math.max(40, Math.min(150, Math.round(D.sc0 * (D.w0 + dx) / Math.max(20, D.w0) / 5) * 5))
+      : Math.max(30, Math.min(100, Math.round((D.w0 + dx) / D.base * 100 / (D.sc0 / 100) / 5) * 5));
+    D.v = v;
+    lySz(D.el, D.kind === "sc" ? v : D.sc0, D.kind === "sc" ? D.bw0 : v);
+    D.tip.textContent = D.kind === "sc" ? "整塊 " + v + "%（字、圖一起變" + (v < 100 ? "小" : v > 100 ? "大" : "回原來的") + "）" : "寬 " + v + "%（字的大小不變）";
+    var vb2 = PBV.doc.querySelector(".rbk-vp"), vr2 = vb2 ? vb2.getBoundingClientRect() : null, tw2 = D.tip.offsetWidth || 0, tx2 = px + 12;
+    if (vr2 && tx2 + tw2 > vr2.right - fr.left - 6) tx2 = Math.max(vr2.left - fr.left + 6, px - tw2 - 12);
+    D.tip.style.left = Math.round(tx2) + "px"; D.tip.style.top = Math.round(py + 12) + "px";
+    return;
+  }
   if (D.kind === "rz") {
     var raw = (D.w0 + dx) / D.cw * 100, w = Math.max(15, Math.min(100, Math.round(raw / 5) * 5)), hh = D.xe ? Math.max(15, Math.min(100, Math.round((D.h0 + dy) / D.ph * 20) * 5)) : 0;
     D.sp = !!(D.spOk && raw > 112);
@@ -15861,6 +15937,14 @@ function pbDragEnd(e, cancel) {
   if (D.tip) D.tip.remove(); if (D.ghost) D.ghost.remove();
   (D.edges || []).forEach(function (x) { x.remove(); });
   var d = pbLy(), el = D.el;
+  if (D.kind === "sc" || D.kind === "bw") {
+    var same = D.v === (D.kind === "sc" ? D.sc0 : D.bw0);
+    if (cancel || !D.moved || same) { el.style.zoom = D.st.z; el.style.width = D.st.w; el.style.marginLeft = D.st.ml; el.style.marginRight = D.st.mr; el.classList.toggle("lyw", D.st.lw); el.classList.toggle("lysc", D.st.lc); pbCvOff(); return; }
+    if (!el._pbB || !pbOwner(el._pbB)) { pbStale(); return; }
+    lySet(el._pbB, d, D.kind === "sc" ? "sc" : "w", D.v);
+    pbChanged(); pbRefresh({ b: el._pbB }); toast(pbMsg(D.kind === "sc" ? "整塊大小 " + D.v + "%（字、圖一起）" : "寬度 " + D.v + "%（字的大小不變）"));
+    return;
+  }
   if (D.kind === "rz") {
     el.classList.remove("pbsp");
     if (cancel || !D.moved) { el.style.width = D.st.w; el.style.height = D.st.h; el.style.marginLeft = D.st.ml; el.style.marginRight = D.st.mr; pbCvOff(); return; }
