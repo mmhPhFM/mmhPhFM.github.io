@@ -3639,29 +3639,51 @@ function pcSplit(code) {
   for (var i = 0; i < 4; i++) { var len = b + (i < x ? 1 : 0); out.push(code.substr(p, len)); p += len; }
   return out;
 }
-var PCC_N = 4, PCC_L = 4, PCC_MIN = 3;
+var PCC_N = 4, PCC_L = 4, PCC_MIN = 3, PCC_BIG = 7, PCC_MAX = 28;
 function pcBoxes(onEnter) {
-  var B = { ins: [], long: "" }, kids = [];
+  var B = { ins: [], big: false }, kids = [];
   var clean = function (v) { return pcNorm(v).replace(/[^A-Za-z0-9]/g, ""); };
+  var cap = function () { return B.big || !pcHas7() ? PCC_BIG : PCC_L; };
   var focusAt = function (i) { try { B.ins[Math.max(0, Math.min(PCC_N - 1, i))].focus(); } catch (e) {  } };
+  var all = function () { return B.ins.map(function (x) { return clean(x.value); }).join(""); };
+  var chunk = function (s) {
+    var c = cap(), g = [];
+    for (var k = 0; k < PCC_N; k++) g.push(k < PCC_N - 1 ? s.substr(k * c, c) : s.substr(k * c));
+    return g;
+  };
   var put = function (i, v) {
-    var k = i;
-    while (k < PCC_N) { B.ins[k].value = v.substr(0, PCC_L); v = v.substr(PCC_L); k++; if (!v) break; }
+    var k = i, c = cap();
+    while (k < PCC_N) { var last = k === PCC_N - 1; B.ins[k].value = last ? v : v.substr(0, c); v = last ? "" : v.substr(c); k++; if (!v) break; }
+  };
+  var look = function () { try { B.el.classList.toggle("pcc7", cap() === PCC_BIG); } catch (e) {  } };
+  var grow = function () {
+    var s = all();
+    if (s.length > PCC_MAX) s = s.substr(0, PCC_MAX);
+    if (!B.big && s.length > 16) { B.big = true; look(); chunk(s).forEach(function (g, k) { B.ins[k].value = g; }); return true; }
+    if (B.big && all().length > PCC_MAX) { chunk(s).forEach(function (g, k) { B.ins[k].value = g; }); return true; }
+    return false;
+  };
+  var next = function (i) {
+    var k = i, c = cap();
+    while (k < PCC_N - 1 && B.ins[k].value.length >= c) k++;
+    return k;
   };
   var fire = function (i, v) {
-    B.long = "";
     var full = pcCodeOf(v);
-    if (full && full.length === 28) { B.long = full; B.ins.forEach(function (x, k) { x.value = full.substr(k * 7, PCC_L); }); focusAt(PCC_N - 1); return; }
     if (full) { B.set(full); focusAt(PCC_N - 1); return; }
     put(i, clean(v));
-    var k = i;
-    while (k < PCC_N - 1 && B.ins[k].value.length >= PCC_L) k++;
-    focusAt(k);
+    if (grow()) { focusAt(next(0)); return; }
+    focusAt(next(i));
   };
   for (var i = 0; i < PCC_N; i++) (function (i) {
-    var inp = h("input", { class: "in pcc", type: "text", inputmode: "text", autocomplete: i ? "off" : "one-time-code", autocapitalize: "off", autocorrect: "off", spellcheck: "false", "aria-label": "短碼第 " + (i + 1) + " 格（3～4 碼）", "data-i": String(i) });
+    var inp = h("input", { class: "in pcc", type: "text", inputmode: "text", autocomplete: i ? "off" : "one-time-code", autocapitalize: "off", autocorrect: "off", spellcheck: "false", "aria-label": "短碼第 " + (i + 1) + " 格（照卡片上的第 " + (i + 1) + " 組）", "data-i": String(i) });
     if (!i) inp.id = "pclin";
-    inp.oninput = function () { var v = inp.value; if (clean(v) !== v || v.length > PCC_L) fire(i, v); else if (v.length >= PCC_L && i < PCC_N - 1) focusAt(i + 1); };
+    inp.oninput = function () {
+      var v = inp.value;
+      if (clean(v) !== v || (v.length > cap() && i < PCC_N - 1)) { fire(i, v); return; }
+      if (grow()) { focusAt(next(0)); return; }
+      if (v.length >= cap() && i < PCC_N - 1) focusAt(i + 1);
+    };
     inp.onkeydown = function (e) {
       if (e.key === "Enter") { e.preventDefault(); onEnter(); return; }
       if ((e.key === " " || e.key === "-" || e.key === "Spacebar") && i < PCC_N - 1) { e.preventDefault(); if (inp.value) focusAt(i + 1); return; }
@@ -3674,22 +3696,26 @@ function pcBoxes(onEnter) {
       if (!t) return;
       e.preventDefault(); fire(i, t);
     };
-    inp.onfocus = function () { try { if (inp.value.length >= PCC_L) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {  } };
+    inp.onfocus = function () { try { if (inp.value.length >= cap()) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {  } };
     B.ins.push(inp);
     if (i) kids.push(h("span", { class: "pcc-d", "aria-hidden": "true" }, ["-"]));
     kids.push(inp);
   })(i);
   B.el = h("div", { class: "pcc4", role: "group", "aria-label": "隨機驗證短碼（4 格）" }, kids);
-  B.get = function () { return B.long || B.ins.map(function (x) { return clean(x.value); }).join(""); };
+  look();
+  B.get = function () { return all(); };
   B.set = function (code) {
-    B.long = ""; code = clean(code);
-    var g = code.length >= 12 && code.length <= 16 ? pcSplit(code) : [code.substr(0, 4), code.substr(4, 4), code.substr(8, 4), code.substr(12)];
+    code = clean(code).substr(0, PCC_MAX);
+    B.big = code.length > 16; look();
+    var g = (code.length >= 12 && code.length <= 16) || code.length === PCC_MAX ? pcSplit(code) : chunk(code);
     B.ins.forEach(function (x, k) { x.value = g[k] || ""; });
   };
-  B.clear = function () { B.long = ""; B.ins.forEach(function (x) { x.value = ""; }); };
-  B.focus = function () { for (var k = 0; k < PCC_N; k++) if (B.ins[k].value.length < PCC_MIN) return focusAt(k); focusAt(PCC_N - 1); };
+  B.clear = function () { B.big = false; look(); B.ins.forEach(function (x) { x.value = ""; }); };
+  B.focus = function () { var need = B.big ? PCC_BIG : PCC_MIN; for (var k = 0; k < PCC_N; k++) if (B.ins[k].value.length < need) return focusAt(k); focusAt(PCC_N - 1); };
   return B;
 }
+function pcHasCfg() { try { return typeof window.HB_XC === "string" || typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
+function pcHas7() { try { return typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
 function pcFine() {
   return h("p", { class: "lgfine" }, ["短碼 10 分鐘內有效、用一次就失效，只給你自己用，不要傳給任何人。這台電腦不會記住你，共用的電腦也可以放心用。", h("br"), "在手機上：" + MSG_LINE]);
 }
@@ -3707,7 +3733,7 @@ function scrFirst(why, msg, r) {
   var next = function () {
     var raw = boxes.get(), code = pcCodeOf(raw);
     if (!code) {
-      m.textContent = raw ? "短碼還沒打完（或打錯了）：照 LINE 卡片上的 4 組打，總共 12～16 碼，大小寫要跟卡片一樣（只有英文、數字；沒有 0、O、1、l、I）。打完一組按空白鍵跳下一格；可以複製的話，按「📋 自動複製」貼在第一格會自動分好。" : "這不像 LINE 回的短碼：回 LINE 按「🔗 外部連結」→「🔑 短碼」，看著卡片上的大字打進 4 格，或按「📋 自動複製」整組貼上來。";
+      m.textContent = raw ? "短碼還沒打完（或打錯了）：照 LINE 卡片上的 4 組打（卡片上一組幾個字，這裡一格就打幾個字），大小寫要跟卡片一樣（只有英文、數字；沒有 0、O、1、l、I）。打完一組按空白鍵跳下一格；可以複製的話，按「📋 自動複製」貼在第一格會自動分好。" : "這不像 LINE 回的短碼：回 LINE 按「🔗 外部連結」→「🔑 短碼」，看著卡片上的大字打進 4 格，或按「📋 自動複製」整組貼上來。";
       boxes.focus(); return;
     }
     PCLK = lkOf(code); lkSave(PCLK);
@@ -3723,6 +3749,7 @@ function scrFirst(why, msg, r) {
   if (w0) lines.push(w0);
   if (why === "old") lines.push("這個短碼（或連結）打不開：可能是以前的固定短連結（已經停用），或沒有複製完整。回 LINE 按「🔗 外部連結」→「🔑 短碼」，拿一組新的。");
   if (why === "nocfg") lines.push("網站上還沒有放好 cfg.js（剛上傳的話，等 1～2 分鐘再重新整理）。還是不行，請跟開發者說。");
+  else if (!why && !canLogin() && !pcHasCfg()) lines.push("⚠️ 這個網站還沒有放好 cfg.js：電腦登入（短碼）暫時不能用，請跟開發者說（開發者：手冊網頁「👥 管理」→ ⑥ 下載 cfg.js，放到網站上）。在手機上：" + MSG_LINE);
   if (why === "bad") lines.push("這個短碼跟網站上的 cfg.js 對不上（可能開發者剛換過設定，或沒有複製完整）：回 LINE 拿一組新的。");
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
@@ -17983,7 +18010,8 @@ function drawPcLink() {
 }
 function pcGhCheck(k7, xx) {
   var u = location.href.split("#")[0].split("?")[0].replace(/[^\/]*$/, "") + "cfg.js?t=" + Date.now();
-  return fetch(u, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" }).then(function (res) { return res.ok ? res.text() : ""; }).then(function (txt) {
+  return fetch(u, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" }).then(function (res) { return res.ok ? res.text() : (res.status === 404 ? "\u0000none" : ""); }).then(function (txt) {
+    if (txt === "\u0000none" || (txt && !/HB_XC7?\s*=/.test(txt))) return "none";
     var m = /HB_XC7\s*=\s*"([^"]+)"/.exec(txt || "");
     if (!m) return false;
     return scOpen(k7, m[1]).then(function (x) { return x === xx; }, function () { return false; });
@@ -17999,13 +18027,17 @@ function pcDraw(box, r, blob, blob7, xx) {
   var ckm = h("span", { class: "hint", id: "pcckm", role: "status", "aria-live": "polite" }, [""]);
   var ck = btn("🔄 檢查 GitHub 上的 cfg.js", function () { pcCheck(true); }, "sm pcck");
   var hd = btn("🙈 這段先收起來（30 天）", function () { try { localStorage.setItem("yz_pc_hide", String(Date.now())); } catch (e) {  } pcShow(false); toast("收起來了：這台 30 天內不再出現（cfg.js 換好了本來就會自己消失）"); }, "sm pchide");
-  box.appendChild(h("p", { class: "pcst warn", id: "pcst" }, ["⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。"]));
+  var st = h("p", { class: "pcst warn", id: "pcst" }, ["⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。"]);
+  box.appendChild(st);
   box.appendChild(h("div", { class: "pcurlrow" }, [dl, ck, hd, ckm]));
   var pcCheck = function (say) {
     ck.disabled = true; ckm.textContent = say ? "檢查中…" : "";
     pcGhCheck(k7, xx).then(function (good) {
       ck.disabled = false;
-      if (good === on7) { pcShow(!good && !pcHidden()); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
+      var none = good === "none"; if (none) good = false;
+      hd.hidden = none;
+      st.textContent = none ? "❌ 網站上還沒有 cfg.js：同事在電腦用短碼登入現在完全不能用。按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 index.html 或 hb.html 放同一層），1～2 分鐘後按「🔄 檢查」，看到 ✅ 就好了（之後這一段不再出現）。" : "⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。";
+      if (good === on7) { pcShow(!good && (none || !pcHidden())); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : none ? "❌ 網站上還是沒有 cfg.js（或還沒更新好）：確定傳上去了（檔名 cfg.js、跟 index.html 同一層），等 1～2 分鐘再按一次。" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
       call("hbEntry", [good ? 1 : -1]).then(function (r2) {
         if (!adOk(r2)) return;
         toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的短碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的短碼先改回長的（照樣能用），請照 ⑥ 換一次");
