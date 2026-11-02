@@ -1037,6 +1037,22 @@ function _yzStepBubbles_(ch, ti, b, bs, o) {
   });
 }
 
+function _yzPicBubbles_(ch, ti, b, bs, o) {
+  o = o || {};
+  var ps = _yzImgAll_(b).slice(0, 12), n = ps.length;
+  return ps.map(function (p, i) {
+    var body = [], im = _yzImage_({ url: p.url, ar: p.ar, cap: "" }, o.act ? o.act(b, i) : null);
+    if (im) body.push(im);
+    var cap = _yzT_(p.cap, { size: "sm", color: "#1F1F1F" }); if (cap) body.push(cap);
+    return {
+      type: "bubble", size: bs,
+      header: _yzHead_("🖼 照片 " + (i + 1) + "／" + n, ti.name, i < n - 1 ? "左右滑，看下一張 ›" : "最後一張"),
+      body: { type: "box", layout: "vertical", spacing: "md", paddingAll: "13px", contents: body },
+      footer: { type: "box", layout: "vertical", paddingAll: "10px", contents: [_yzFoot_()] }
+    };
+  });
+}
+
 function _yzNorm_(s) {
   s = String(s === null || s === undefined ? "" : s);
   var o = "";
@@ -1908,7 +1924,13 @@ function _yzLinkFix_(v) {
 }
 function _yzLinkHost_(u) { var m = /^https?:\/\/([^\/?#:]+)/i.exec(String(u || "")); return m ? m[1].replace(/^www\./i, "").toLowerCase() : ""; }
 function _yzLinkItems_(b) { return (b && Array.isArray(b.items) ? b.items : []).filter(function (x) { return x && _yzLinkFix_(x.u); }).slice(0, YZ_LINK_MAX); }
-function _yzLinkLabel_(x) { return String(x && x.t || "").replace(/\s+/g, " ").trim() || _yzLinkHost_(_yzLinkFix_(x && x.u)) || "網站"; }
+function _yzLinkVer_(x) { var v = Math.round(+(x && x.ver)); return v >= 1 && v <= 999 ? v : 0; }
+function _yzLinkBase_(t) { return String(t || "").replace(/\s+/g, " ").replace(/\s*[（(]\s*第\s*\d+\s*版\s*[）)]\s*$/, "").trim(); }
+function _yzLinkLabel_(x) {
+  var v = _yzLinkVer_(x), t = String(x && x.t || "").replace(/\s+/g, " ").trim();
+  if (v) t = _yzLinkBase_(t);
+  return (t || _yzLinkHost_(_yzLinkFix_(x && x.u)) || "網站") + (v ? "（第 " + v + " 版）" : "");
+}
 var YZ_FILE_EXT = { pdf: "pdf", doc: "word", docx: "word", odt: "word", rtf: "word", txt: "word", xls: "excel", xlsx: "excel", ods: "excel", csv: "excel", ppt: "ppt", pptx: "ppt", odp: "ppt", png: "img", jpg: "img", jpeg: "img", gif: "img", webp: "img", bmp: "img" };
 var YZ_FILE_ICO = { pdf: "📕", word: "📘", excel: "📗", ppt: "📙", img: "🖼", file: "📄", folder: "📁" };
 var YZ_FILE_NAME = { pdf: "PDF", word: "Word", excel: "Excel", ppt: "PPT", img: "圖片", file: "檔案", folder: "資料夾" };
@@ -2055,6 +2077,15 @@ function _yzContentBubbles_(ch, ti, blocks, note, o) {
     if (pendBrk) { b.brk = true; pendBrk = false; }
     if (cur().closed) segs.push({ nodes: [] });
     if (b.brk && i > 0 && cur().nodes && cur().nodes.length) segs.push({ nodes: [] });
+    if (b.t === "img" && !b.draw && YZ_CFG.imgDirect && _yzImgGroup_(b)) {
+      var pg = _yzPicBubbles_(ch, ti, b, bs, { act: act });
+      if (!cur().nodes.length) {
+        if (segs.length === 1) segs[0] = { nodes: [{ type: "text", text: "🖼 下面有 " + pg.length + " 張照片，左右滑著看。", size: "sm", color: "#5F6B7A", wrap: true }] };
+        else segs.pop();
+      }
+      segs.push({ steps: pg }); segs.push({ nodes: [] });
+      return;
+    }
     if (b.t === "anim" && b.kind === "steps") {
       var sb = _yzStepBubbles_(ch, ti, b, bs, { act: act });
       if (!sb.length) return;
@@ -2206,11 +2237,16 @@ function _yzTblPics_(tb) {
   return out;
 }
 function _yzCellTxt_(tb, v) { v = v === undefined || v === null ? "" : String(v); return tb && tb.rt ? _yzRtPlain_(v) : v; }
+function _yzImgAll_(b) {
+  if (!b || b.t !== "img" || !b.url) return [];
+  return [b].concat(b.draw ? [] : (Array.isArray(b.g) ? b.g : []).filter(function (x) { return x && x.url; }));
+}
+function _yzImgGroup_(b) { return _yzImgAll_(b).length > 1; }
 function _yzTitlePics_(t) {
   var out = [];
   (t && t.blocks || []).forEach(function (b) {
     if (!b) return;
-    if (b.t === "img") { if (b.url) out.push(b); if (b.draw && b.draw.bg && b.draw.bg.url) out.push(b.draw.bg); }
+    if (b.t === "img") { out = out.concat(_yzImgAll_(b)); if (b.draw && b.draw.bg && b.draw.bg.url) out.push(b.draw.bg); }
     else if (b.t === "ladder") (b.items || []).forEach(function (it) { if (it && it.img && it.img.url) out.push(it.img); });
     else if (b.t === "anim" && b.kind === "steps") (b.steps || []).forEach(function (st) { if (st && st.url) out.push(st); });
     else if (b.t === "text") out = out.concat(_yzTextPics_(b));
@@ -2261,6 +2297,7 @@ function _yzUnits_(t, ch) {
         if (b.draw.bg) _yzOcrUnits_(u, b.draw.bg, i);
       }
       else _yzOcrUnits_(u, b, i);
+      if (!b.draw) _yzImgAll_(b).slice(1).forEach(function (p) { if (String(p.cap || "").trim()) u.push({ k: "img", v: String(p.cap).trim(), b: i }); _yzOcrUnits_(u, p, i); });
     }
     else if (b.t === "drug") (b.items || []).forEach(function (d) { var s = [d && d.code, d && d.brand, d && d.chName].filter(Boolean).join(" "); if (s) u.push({ k: "drug", v: s, b: i }); });
     else if (b.t === "link") _yzLinkItems_(b).forEach(function (x, j) { var n = String(x.n || "").trim(); u.push({ k: "link", v: _yzLinkLabel_(x) + "　" + _yzLinkHost_(_yzLinkFix_(x.u)) + (n ? "　" + n : ""), b: i }); if (_YZ_DX) _yzDxUnits_(u, x, i, j); });
@@ -2374,7 +2411,7 @@ function _yzPicsOf_(t, ch) {
   var out = [];
   ((t && t.blocks) || []).forEach(function (b, i) {
     if (!b || _yzOnlyHide_(b, ch)) return;
-    if (b.t === "img") { if (b.url) out.push({ b: i, p: b, kind: b.draw ? "draw" : "img", cap: String(b.cap || "").trim() }); }
+    if (b.t === "img") _yzImgAll_(b).forEach(function (p) { out.push({ b: i, p: p, kind: b.draw ? "draw" : "img", cap: String(p.cap || "").trim() }); });
     else if (b.t === "ladder") (b.items || []).forEach(function (it) { if (it && it.img && it.img.url) out.push({ b: i, p: it.img, kind: "img", cap: String(it.img.cap || "").trim() }); });
     else if (b.t === "text") _yzTextPics_(b).forEach(function (p) { out.push({ b: i, p: p, kind: "img", cap: String(p.cap || "").trim() }); });
     else if (b.t === "table") _yzTblPics_(b).forEach(function (p) { out.push({ b: i, p: p, kind: "img", cap: String(p.cap || "").trim() }); });
@@ -4740,6 +4777,16 @@ function webFig(b, o) {
   im.onclick = function () { if (o.onImg) o.onImg(b.url); };
   return h("figure", { class: [o.cls || "", oh ? "ocrhit" : ""].join(" ").trim() || null, style: o.style || null }, [im, b.cap ? h("figcaption", {}, hlNodes(b.cap, o.hl)) : null, oh ? ocrTag() : null]);
 }
+function webFigs(b, o) {
+  o = o || {};
+  var ps = _yzImgAll_(b), n = ps.length, cols = Math.max(2, Math.min(6, Math.round(+b.cols) || 2));
+  var g = h("div", { class: "figs", style: "--cols:" + cols, "data-n": String(n), role: "group", "aria-label": n + " 張照片" });
+  ps.forEach(function (p, i) {
+    var im = picSize(h("img", { src: p.url, alt: p.cap || "", loading: "lazy", draggable: "false" }), p), oh = ocrHit(p, o.hl);
+    g.appendChild(zoomFig({ media: im, img: im, cap: p.cap, hl: o.hl, cls: "gtile" + (oh ? " ocrhit" : ""), style: picVars(p), label: "照片 " + (i + 1) + "／" + n, after: oh ? [ocrTag()] : [], still: !!o.still, two: b.two === true, big: function () { return p.url; } }));
+  });
+  return h("div", { class: "figsw" }, [g, h("div", { class: "figs-hint", "aria-hidden": "true" }, ["← 往左滑，看全部 " + n + " 張"])]);
+}
 function webDraw(b, o) {
   o = o || {};
   var pv = o.pv && typeof drPv === "function" ? drPv(b) : null, full = pv ? pv.full : b.url, far = pv ? pv.ar : b.ar;
@@ -4905,15 +4952,15 @@ function webArticle(ch, t, o) {
   }
   var goFn = o.hb ? function (id) { return _yzGoTarget_(o.hb, id, ch.id); } : null;
   if (o.hb) _yzLadderNumberAll_(o.hb);
-  var hidN = 0, shown = 0, afterHd = false, sbL = null;
+  var hidN = 0, shown = 0, afterHd = false, sbL = null, sdP = null;
   (t.blocks || []).forEach(function (b, bIdx) {
-    if (_yzOnlyHide_(b, "web")) { hidN++; return; }
+    if (_yzOnlyHide_(b, "web")) { hidN++; sdP = null; return; }
     var el = null;
     if (b.t === "text") el = webText(b.v, o.hl, { go: goFn, onTitle: o.onTitle, onChapter: o.onChapter, pics: b.pics, tbls: b.tbls, onImg: o.onImg, still: o.still });
     else if (b.t === "ladder") el = webLadder(b, o.hl, o);
     else if (b.t === "table") el = webTable(b, o.hl, { onImg: o.onImg, still: o.still });
     else if (b.t === "img" && b.draw) el = webDraw(b, o);
-    else if (b.t === "img" && b.url) el = webFig(b, o);
+    else if (b.t === "img" && b.url) el = _yzImgGroup_(b) ? webFigs(b, o) : webFig(b, o);
     else if (b.t === "anim") el = webAnim(b, o);
     else if (b.t === "drug") el = webDrugs(b, o);
     else if (b.t === "link") el = webLinks(b, o.hl, { tid: t.id, bi: bIdx, pv: !!o.pv || !o.page, ph: o.emb === "ph", ly: o.ly || null });
@@ -4927,6 +4974,7 @@ function webArticle(ch, t, o) {
     if (L && L.hd === 1) {
       if (o.mark) { var mk = h("div", { class: "lyhd-mk" }, [h("span", { class: "lyhd-b", title: "翻頁的時候隱藏（藥師翻頁看不到；往下捲、LINE 照常）：點一下可以取消" }, ["🙈 隱藏了：第 " + (bIdx + 1) + " 塊（" + (KIND_NAME_W[b.t] || "內容") + "）"])]); o.mark(mk, b, { lead: false, t: t, hid: true }); a.appendChild(mk); }
       sbL = null;
+      sdP = null;
       return;
     }
     if ((L ? L.pb === 1 : b.pb === true) && !lead) el.classList.add("pgbrk");
@@ -4934,6 +4982,14 @@ function webArticle(ch, t, o) {
     if (L) lyDeco(el, b, L);
     if (o.mark) o.mark(el, b, { lead: lead, t: t });
     afterHd = !!b.mgh;
+    if (sdP && b.t === "text" && !b.mgh && sdP.el.parentNode === a) {
+      var sx = h("div", { class: "sdx " + (sdP.m === "wrap" ? "sdwrap" : "sdcol") + " sd-" + sdP.side + (sdP.el.classList.contains("pgbrk") ? " pgbrk" : "") + (sdP.el.classList.contains("pgkeep") ? " pgkeep" : ""), style: "--sdw:" + sdP.w + "%" });
+      sdP.el.classList.remove("pgbrk"); el.classList.remove("pgbrk");
+      a.replaceChild(sx, sdP.el); sx.appendChild(sdP.el); sx.appendChild(el);
+      sdP = null; sbL = L && L.sb === 1 ? { el: sx, sw: L.sw } : null; shown++;
+      return;
+    }
+    sdP = b.t === "img" && (b.sd === "l" || b.sd === "r") && !(L && L.sb === 1) ? { el: el, side: b.sd, m: b.sm === "wrap" ? "wrap" : "", w: Math.max(20, Math.min(70, Math.round(+b.sw) || 40)) } : null;
     if (sbL && !b.mgh && sbL.el.parentNode === a) {
       var wr = h("div", { class: "lysb" + (sbL.el.classList.contains("pgbrk") ? " pgbrk" : "") });
       sbL.el.classList.remove("pgbrk"); el.classList.remove("pgbrk");
@@ -12119,6 +12175,7 @@ function renderToolbar() {
   }
   var fm = $("#edfmt"); if (fm) fm.style.display = isT ? "" : "none";
   tb.appendChild(h("span", { class: "sp" }));
+  if (ED.mode !== "qz") tb.appendChild(h("button", { class: "btn sm", id: "dupOpen", type: "button", title: "上傳新版的文獻：整本手冊裡名字或檔名一樣的連結（網頁框也算）一起換，問你是第幾版", onclick: dupOpen }, ["📄 換文獻"]));
   var bkb = h("button", { class: "btn sm pbopen", id: "pbOpen", type: "button", title: "藥師用網頁翻頁看的樣子（電腦兩頁、手機一頁）：點一塊內容，設定「從這裡換到新的一頁」「這一塊不要切開」", onclick: function () { pbOpen(); } }, ["📖 翻頁預覽", h("span", { class: "newb" }, ["新"])]);
   if (!pbChapter()) bkb.disabled = true;
   tb.appendChild(bkb);
@@ -12516,12 +12573,17 @@ function blockEditor(t, b, i) {
       kind: "圖片",
       get: function () { return b.url; }, info: function () { return b.info; }, fname: function () { return b.fname; },
       set: function (r, info) { b.url = r.url; b.fid = r.fid; b.fname = r.fname; b.info = info; b.ar = _yzAR_(info.w, info.h); edOcrNew(b); changed(); },
-      clear: function () { b.url = ""; b.fid = ""; b.info = null; delete b.ocr; changed(); ocrPaint(); }
+      clear: function () {
+        if (b.g && b.g.length) { edImgPromote(b); renderForm(); changed(); return; }
+        b.url = ""; b.fid = ""; b.info = null; delete b.ocr; changed(); ocrPaint();
+      }
     });
     body.appendChild(dz.el);
     var cap = h("input", { class: "in", value: b.cap || "", placeholder: "圖說（可以不填）", style: "margin-top:6px" });
     cap.oninput = function () { b.cap = cap.value; changed(); };
     body.appendChild(cap);
+    body.appendChild(edImgRow(t, b, i));
+    body.appendChild(edImgSide(t, b, i));
     body.appendChild(edPicTwo(b));
     body.appendChild(ocrLine(b));
     if (b.url && b.fid) body.appendChild(h("div", { class: "drw-conv" }, [btn("✏️ 在照片上畫備註", function () { edToDraw(b, function () { renderForm(); changed(); }); }, "sm"), h("span", { class: "muted" }, ["變成「繪圖」：在這張照片上畫圈、箭頭、寫字（照片本身不會被改；存檔時另外存一張畫好的）"])]));
@@ -12532,6 +12594,91 @@ function blockEditor(t, b, i) {
   var blk = h("div", { class: "blk" + (ED.ab === i ? " act" : "") + (b.brk && i > 0 ? " brk" : "") + (b.only === "line" ? " only-line" : b.only === "web" ? " only-web" : ""), "data-i": String(i), "data-ind": _yzBlockInd_(b) ? String(_yzBlockInd_(b)) : null }, [head, body]);
   if (rte) blk._rte = rte;
   return blk;
+}
+var ED_IMG_G_MAX = 11;
+function bk64() { return backAtLeast(12, 27); }
+function edImgPromote(b) {
+  var p = b.g.shift();
+  b.url = p.url; b.fid = p.fid || ""; b.fname = p.fname || ""; b.info = p.info || null; b.ar = p.ar || b.ar; b.cap = p.cap || "";
+  if (typeof p.ocr === "string") b.ocr = p.ocr; else delete b.ocr;
+  if (!b.g.length) { delete b.g; delete b.cols; }
+}
+function edImgRow(t, b, i) {
+  var ok = bk64(), box = h("div", { class: "imgrow" });
+  var g = Array.isArray(b.g) ? b.g : [];
+  box.appendChild(h("div", { class: "imgrow-h" }, [h("b", {}, ["📷 同一排再加照片"]), h("span", { class: "muted" }, [ok ? "　電腦、平板一排放 2～6 張；手機一排往左滑；LINE 左右滑" : "　（Apps Script 的 02 換成第 64 批以後才存得住）"])]));
+  if (!ok && !g.length) return box;
+  var list = h("div", { class: "imgrow-l" });
+  g.forEach(function (p, k) {
+    var c = h("input", { class: "in sm", value: p.cap || "", placeholder: "第 " + (k + 2) + " 張的圖說（可以不填）", "aria-label": "第 " + (k + 2) + " 張的圖說" });
+    c.oninput = function () { p.cap = c.value; changed(); };
+    var mv = function (d) { var j = k + d; if (j < 0 || j >= g.length) return; g.splice(j, 0, g.splice(k, 1)[0]); renderForm(); changed(); };
+    list.appendChild(h("div", { class: "imgrow-i", "data-k": String(k) }, [
+      h("img", { src: p.url, alt: "", class: "imgrow-t" }), h("span", { class: "imgrow-n" }, ["第 " + (k + 2) + " 張"]), c,
+      btn("◀", function () { if (k === 0) { var p0 = { url: b.url, fid: b.fid, fname: b.fname, info: b.info, ar: b.ar, cap: b.cap, ocr: b.ocr }; edImgSwap(b, p0, p); g[0] = p0; renderForm(); changed(); } else mv(-1); }, "sm"),
+      btn("▶", function () { mv(1); }, "sm"),
+      btn("✕", function () { g.splice(k, 1); if (!g.length) { delete b.g; delete b.cols; } renderForm(); changed(); }, "sm bad")
+    ]));
+  });
+  box.appendChild(list);
+  var fi = h("input", { type: "file", accept: "image/jpeg,image/png,image/gif,image/webp,image/bmp", multiple: true, style: "display:none" });
+  var add = btn("＋ 再加照片（可以一次選好幾張）", function () { fi.click(); }, "sm");
+  if (!ok || !b.url || g.length >= ED_IMG_G_MAX) add.disabled = true;
+  fi.onchange = function () {
+    var fs = Array.prototype.slice.call(fi.files || []).slice(0, ED_IMG_G_MAX - g.length); fi.value = "";
+    if (!fs.length) return;
+    var left = fs.length, got = [];
+    fs.forEach(function (f, k) {
+      edImgUp(f, function (p) {
+        if (p) got[k] = { url: p.url, fid: p.fid, fname: p.fname, ar: p.ar, info: p.info, cap: "" };
+        left--;
+        if (left) return;
+        var add2 = got.filter(Boolean);
+        if (!add2.length) return;
+        if (!Array.isArray(b.g)) b.g = [];
+        add2.forEach(function (x) { if (b.g.length < ED_IMG_G_MAX) { b.g.push(x); edOcrNew(x); } });
+        if (!(b.cols >= 2)) b.cols = Math.min(6, Math.max(2, b.g.length + 1 > 3 ? 3 : b.g.length + 1));
+        renderForm(); changed();
+        toast("放好了 " + add2.length + " 張（已縮小、檔名換成亂碼）");
+      }, true);
+    });
+  };
+  var cs = h("span", { class: "imgrow-c" }, [h("span", { class: "muted" }, ["一排幾張："])]);
+  [2, 3, 4, 5, 6].forEach(function (n) {
+    var bb = btn(String(n), function () { b.cols = n; renderForm(); changed(); }, "sm" + ((+b.cols || 2) === n ? " on" : ""));
+    bb.setAttribute("aria-pressed", String((+b.cols || 2) === n));
+    if (!g.length) bb.disabled = true;
+    cs.appendChild(bb);
+  });
+  box.appendChild(h("div", { class: "imgrow-a" }, [add, fi, cs]));
+  if (!b.url) box.appendChild(h("div", { class: "muted mcn" }, ["先在上面放第一張，才能再加"]));
+  return box;
+}
+function edImgSwap(b, p0, p) {
+  b.url = p.url; b.fid = p.fid || ""; b.fname = p.fname || ""; b.info = p.info || null; b.ar = p.ar || b.ar; b.cap = p.cap || "";
+  if (typeof p.ocr === "string") b.ocr = p.ocr; else delete b.ocr;
+  if (typeof p0.ocr !== "string") delete p0.ocr;
+}
+function edImgSide(t, b, i) {
+  var ok = bk64(), nx = t.blocks[i + 1], box = h("div", { class: "imgside" });
+  var cur = b.sd === "l" || b.sd === "r" ? (b.sm === "wrap" ? "w" : "c") + b.sd : "";
+  var opts = [["", "不要（圖自己一行）"], ["cl", "圖在左、字在右（並排）"], ["cr", "圖在右、字在左（並排）"], ["wl", "文繞圖：圖在左，字繞著圖"], ["wr", "文繞圖：圖在右，字繞著圖"]];
+  var sel = h("select", { class: "in sm imgside-s", "aria-label": "旁邊放文字" }, opts.map(function (o) { var op = h("option", { value: o[0] }, [o[1]]); if (o[0] === cur) op.selected = true; return op; }));
+  if (!ok && !cur) sel.disabled = true;
+  sel.onchange = function () {
+    var v = sel.value;
+    if (!v) { delete b.sd; delete b.sm; delete b.sw; }
+    else { b.sd = v.charAt(1); if (v.charAt(0) === "w") b.sm = "wrap"; else delete b.sm; if (!b.sw) b.sw = 40; }
+    renderForm(); changed();
+  };
+  var ws = h("select", { class: "in sm imgside-w", "aria-label": "圖佔多寬" }, [[25, "圖佔 1/4"], [33, "圖佔 1/3"], [40, "圖佔 40%"], [50, "圖佔一半"], [60, "圖佔 60%"]].map(function (o) { var op = h("option", { value: String(o[0]) }, [o[1]]); if ((+b.sw || 40) === o[0]) op.selected = true; return op; }));
+  ws.onchange = function () { b.sw = +ws.value; changed(); };
+  if (!cur) ws.disabled = true;
+  box.appendChild(h("div", { class: "imgside-r" }, [h("b", {}, ["📝 旁邊放文字："]), sel, ws]));
+  if (!ok) box.appendChild(h("div", { class: "muted mcn" }, ["（Apps Script 的 02 換成第 64 批以後才存得住）"]));
+  else if (cur && !(nx && nx.t === "text")) box.appendChild(h("div", { class: "imgside-n" }, [h("span", {}, ["⚠️ 放在旁邊的是「下面那一塊文字」：下面那一塊不是文字。"]), btn("＋ 在這張圖下面加一塊文字", function () { t.blocks.splice(i + 1, 0, { t: "text", v: "" }); ED.ab = i + 1; renderForm(); changed(); }, "sm")]));
+  else if (cur) box.appendChild(h("div", { class: "muted mcn" }, ["放在旁邊的是下面那一塊文字（第 " + (i + 2) + " 塊）。手機太窄：圖在上、字在下。LINE：照順序（圖、再來字）。"]));
+  return box;
 }
 function edPicTwo(b) {
   var ok = backAtLeast(12, 19), cb = h("input", { type: "checkbox", class: "pic-two" }); cb.checked = b.two === true;
@@ -12841,7 +12988,13 @@ function linkEditor(b) {
       del.title = "刪掉這一個連結";
       var up = k > 0 ? btn("▲", function () { var y = b.items[k - 1]; b.items[k - 1] = x; b.items[k] = y; paint(); changed(); }, "sm") : null;
       if (up) up.title = "往上移";
-      list.appendChild(h("div", { class: "lkrw" }, [ico, h("div", { class: "lk-f" }, [h("div", { class: "lk-r1" }, [tIn, uIn]), h("div", { class: "lk-r2" }, [nIn, kSel, tryB, up, del]), szRow, twoRow, msg, dxEl])]));
+      var verRow = null;
+      if (x.ver) {
+        var vIn = h("input", { class: "in sm lk-ver", type: "number", min: "1", max: "999", value: String(x.ver), "aria-label": "第幾版 " + (k + 1) });
+        vIn.oninput = function () { var v = Math.round(+vIn.value); if (v >= 1 && v <= 999) { x.ver = v; changed(); } };
+        verRow = h("div", { class: "lk-r5" }, [h("span", { class: "lk-szl" }, ["🏷 第"]), vIn, h("span", { class: "lk-szl" }, ["版（名字後面會寫「（第 N 版）」）" + (x.fn ? "　原本的檔名：" + x.fn : "")]), btn("不寫版本", function () { delete x.ver; paint(); changed(); }, "sm")]);
+      }
+      list.appendChild(h("div", { class: "lkrw" }, [ico, h("div", { class: "lk-f" }, [h("div", { class: "lk-r1" }, [tIn, uIn]), h("div", { class: "lk-r2" }, [nIn, kSel, tryB, up, del]), szRow, twoRow, verRow, msg, dxEl])]));
       chk();
       if (x.k === "emb") lkeCheck(_yzLinkFix_(x.u));
     });
@@ -12849,7 +13002,7 @@ function linkEditor(b) {
   var add = btn("＋ 再加一個連結", function () { if (b.items.length >= YZ_LINK_MAX) { toast("一塊最多 " + YZ_LINK_MAX + " 個連結：請再加一塊「＋網址連結」"); return; } b.items.push({ u: "", t: "", n: "" }); paint(); changed(); var ins = list.querySelectorAll(".lk-u"); if (ins.length) ins[ins.length - 1].focus(); }, "sm");
   paint();
   wrap.appendChild(list);
-  wrap.appendChild(h("div", { class: "lk-add" }, [add]));
+  wrap.appendChild(h("div", { class: "lk-add" }, [add, btn("📄 換文獻（按檔名，整本一起換）", dupOpen, "sm")]));
   wrap.appendChild(hint("開法「自動」（第 48 批）：網頁在手冊裡的小視窗看；網站自己規定不讓別的網頁放、要先登入的（付費的資料庫常這樣）、沒有加密（http）的 → 讀的人點了直接另外打開（電腦：右邊的小視窗；手機：新分頁；LINE：直接開那個網址），不用再多按一次。網站讓不讓放是後端去看的（打好網址、按「↗ 試開」、每次打開編輯器都會看）。後端看不出來的（例如院內網路才打得開的網站）：開法選「網頁：另外打開（新視窗）」（第 49 批），一律另外打開。「網頁：一定在手冊裡看」＝不管網站讓不讓都先放進小視窗（不讓的：寫清楚＋「↗ 另外打開」）。網址是檔案（Word、PDF、Excel、PPT、圖片；Google 文件、試算表、簡報、雲端硬碟的檔）→ 只能看，不能下載、列印，有浮水印。院內網路這種要登入的檔案後端拿不到：請放雲端硬碟（Google 雲端硬碟分享給藥戰手冊的 Google 帳號就好，不用公開）。第 55 批：各家雲端硬碟的分享連結也可以（Google 雲端硬碟的資料夾、OneDrive、OneDrive 公司版／SharePoint、Dropbox、iCloud、pCloud、MEGA、Box、Yandex；分享要設成「知道連結的人都能看」）：分享的是資料夾＝讀的人看到裡面的檔的清單，點了就看（iCloud 的資料夾不行）。YouTube、Vimeo 的影片可以直接在小視窗播。開法「嵌入」（第 50 批）：Word、PPT、PDF、Excel、圖片、網頁直接放在文章裡（一格，裡面可以上下捲；捲到才拿；「⛶ 放大」用小視窗看）；檔案一樣只能看；網站不讓別的網頁放的，那一格寫清楚＋「↗ 另外打開」；LINE 不能嵌入，照「在手冊裡看」。第 52 批：嵌入框的大小可以選（高度：整頁／大／中／小；寬度：整欄／3/4／一半）。顯示的字、說明搜尋找得到；第 52 批：檔案（不管開法）、嵌入的網頁裡面的字也找得到（存檔以後在背景讀，每一個連結下面寫讀好了沒）。Word 匯出寫「名稱：網址」。"));
   return wrap;
 }
@@ -14570,6 +14723,145 @@ function bkModeSave(p, el, done) {
     if ($("#cfgBox") && typeof drawSettings === "function") drawSettings();
     if ($("#pbov") && typeof pbModeNote === "function") { pbModeNote(); pbBuild(); }
   }, function (e) { if (el) el.disabled = false; toast("❌ " + e.message); });
+}
+
+var DUP_MAX = 15 * 1024 * 1024, DUP_EXT = /\.(pdf|docx?|odt|rtf|txt|xlsx?|ods|csv|pptx?|odp|png|jpe?g|gif|webp|bmp)$/i;
+function bk64Doc() { return bk64() && (+V3 || 0) >= 64; }
+function dupKey(s, file) {
+  var t = String(s || "").replace(/[\u0000-\u001F]/g, " ").trim();
+  if (file) t = t.replace(/\.[A-Za-z0-9]{2,5}$/, "");
+  for (var k = 0; k < 3; k++) t = t.replace(/[\s_\-－–—]*[（(\[【]?\s*(?:第\s*\d+\s*版(?:本)?|版本\s*\d+|ver(?:sion)?\.?\s*\d+(?:\.\d+)*|v\d+(?:\.\d+)*)\s*[）)\]】]?\s*$/i, "");
+  return _yzNorm_(t).replace(/[\s　_\-－–—·・.,，、。（）()【】\[\]「」『』"'`~!！?？:：;；]+/g, "");
+}
+function dupScan(key, names) {
+  var out = [];
+  ED.chapters.forEach(function (c) {
+    (ED.titles[c.id] || []).forEach(function (t) {
+      (t.blocks || []).forEach(function (b, bi) {
+        if (!b || b.t !== "link" || !Array.isArray(b.items)) return;
+        b.items.forEach(function (x, ii) {
+          if (!x || !_yzLinkFix_(x.u)) return;
+          var why = [], fn = x.fn || names[_yzLinkFix_(x.u)] || "";
+          if (String(x.t || "").trim() && dupKey(x.t, false) === key) why.push("名字一樣");
+          if (fn && dupKey(fn, true) === key) why.push("檔名一樣（" + fn + "）");
+          if (why.length) out.push({ c: c, t: t, bi: bi, ii: ii, x: x, why: why, ver: _yzLinkVer_(x) });
+        });
+      });
+    });
+  });
+  return out;
+}
+function dupHowOpen(x) {
+  var fk = _yzLinkFileKind_(x);
+  return x.k === "emb" ? "網頁框（嵌入）" : x.k === "ext" ? "網頁：另外打開" : x.k === "web" ? "網頁：在手冊裡看" : fk ? YZ_FILE_NAME[fk] + "：在手冊裡看" : "網頁";
+}
+function dupDlg(title) {
+  var bx = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title });
+  var body = h("div", { class: "dlg-p" }), foot = h("div", { class: "dlg-b" });
+  var dlg = h("div", { class: "dlg dup-d" }, [h("h3", {}, [title]), body, foot]);
+  bx.appendChild(dlg); document.body.appendChild(bx);
+  var close = function () { bx.remove(); };
+  bx.onkeydown = function (e) { if (e.key === "Escape" && !bx._busy) close(); };
+  return { bx: bx, dlg: dlg, body: body, foot: foot, close: close };
+}
+function dupOpen() {
+  if (!ED) return;
+  if (!bk64Doc()) { modal({ title: "📄 換文獻", lines: ["要先把 Apps Script 的 02、03 換成第 64 批（部署新版本），才能用「換文獻」。"], buttons: [{ label: "知道了", cls: "sm pri" }] }); return; }
+  var fi = h("input", { type: "file", accept: ".pdf,.doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp,.png,.jpg,.jpeg,.gif,.webp,.bmp", style: "display:none" });
+  document.body.appendChild(fi);
+  fi.onchange = function () { var f = fi.files && fi.files[0]; fi.remove(); if (f) dupPick(f); };
+  fi.click();
+}
+function dupPick(f) {
+  var nm = String(f.name || "").trim(), key = dupKey(nm, true);
+  if (!DUP_EXT.test(nm)) { modal({ title: "📄 換文獻", lines: ["「" + nm + "」這種檔不能放。可以放：PDF、Word、Excel、PPT、圖片、純文字。"], buttons: [{ label: "知道了", cls: "sm pri" }] }); return; }
+  if (!(f.size > 0)) { modal({ title: "📄 換文獻", lines: ["這個檔是空的。"], buttons: [{ label: "知道了", cls: "sm pri" }] }); return; }
+  if (f.size > DUP_MAX) { modal({ title: "📄 換文獻", lines: ["檔案太大（" + (f.size / 1048576).toFixed(1) + " MB；最多 15 MB）。"], buttons: [{ label: "知道了", cls: "sm pri" }] }); return; }
+  if (!key) { modal({ title: "📄 換文獻", lines: ["看不出這個檔的名字（檔名只有符號？）。"], buttons: [{ label: "知道了", cls: "sm pri" }] }); return; }
+  toast("📄 找手冊裡叫「" + nm.replace(/\.[A-Za-z0-9]{2,5}$/, "") + "」的連結…");
+  call("hbDocNames", []).then(function (r) {
+    if (r && r.st === "lock") { logout("expired"); return; }
+    dupShow(f, key, r && r.ok && r.names ? r.names : {}, r && r.ok ? "" : (r && r.err || ""));
+  }, function () { dupShow(f, key, {}, "連不上後端：只比顯示的名字（連到的檔的檔名沒有比）"); });
+}
+function dupShow(f, key, names, warn) {
+  var base = String(f.name).replace(/\.[A-Za-z0-9]{2,5}$/, ""), hits = dupScan(key, names);
+  var D = dupDlg("📄 換文獻：「" + base + "」");
+  D.body.appendChild(h("p", {}, ["新的檔：" + f.name + "（" + (f.size >= 1048576 ? (f.size / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(f.size / 1024)) + " KB") + "）"]));
+  if (warn) D.body.appendChild(h("p", { class: "muted" }, ["⚠ " + warn]));
+  if (!hits.length) {
+    D.body.appendChild(h("p", {}, ["整本手冊裡沒有名字或檔名叫「" + base + "」的連結（網頁框也找過了）。"]));
+    D.body.appendChild(h("p", { class: "muted" }, ["比對的時候不管空白、符號、全形半形，也不管後面寫的版本（第 2 版、v2）。要換的那一個名字不一樣的話：先在那個連結把「顯示的字」改成一樣，再換一次。"]));
+    D.foot.appendChild(btn("知道了", D.close, "sm pri"));
+    return;
+  }
+  var maxV = 0; hits.forEach(function (x) { if (x.ver > maxV) maxV = x.ver; });
+  D.body.appendChild(h("p", {}, ["找到 " + hits.length + " 個，勾要換的（預設全部）："]));
+  var list = h("div", { class: "dup-m" }), cbs = [];
+  hits.forEach(function (x, k) {
+    var cb = h("input", { type: "checkbox", "data-k": String(k) }); cb.checked = true; cbs.push(cb);
+    var where = [x.c.name].concat(_yzTPath_(ED.titles[x.c.id] || [], x.t).map(function (y) { return y.name; })).concat([x.t.name || "（還沒有標題）"]).join(" › ") + "　第 " + (x.bi + 1) + " 塊";
+    list.appendChild(h("label", { class: "dup-i" }, [cb, h("span", {}, [h("b", {}, [_yzLinkLabel_(x.x)]), h("small", {}, [where + "｜" + dupHowOpen(x.x) + "｜" + x.why.join("、")])])]));
+  });
+  D.body.appendChild(list);
+  var vIn = h("input", { class: "in", type: "number", min: "1", max: "999", step: "1", value: String(maxV ? maxV + 1 : 2), "aria-label": "這是第幾版" });
+  D.body.appendChild(h("div", { class: "dup-v" }, [h("b", {}, ["這是第幾版？"]), h("span", {}, ["第"]), vIn, h("span", {}, ["版"]), h("span", { class: "muted" }, [maxV ? "（現在最新的是第 " + maxV + " 版）" : "（現在沒有寫版本）"])]));
+  D.body.appendChild(h("p", { class: "muted" }, ["換了以後：連結的名字後面寫「（第 N 版）」，讀的人只看得到新的這一版；開法（網頁框、在手冊裡看…）、說明、嵌入框的大小照舊。雲端硬碟上的檔名會換成亂碼。換好會自動儲存。"]));
+  var prog = h("div", { class: "dup-p", role: "status", "aria-live": "polite" });
+  D.body.appendChild(prog);
+  var go = btn("⬆ 上傳並換掉（" + hits.length + " 個）", null, "sm pri"), no = btn("取消", D.close, "sm");
+  var paintGo = function () { var n = cbs.filter(function (c) { return c.checked; }).length; go.textContent = "⬆ 上傳並換掉（" + n + " 個）"; go.disabled = !n; };
+  cbs.forEach(function (c) { c.onchange = paintGo; });
+  D.foot.appendChild(no); D.foot.appendChild(go);
+  try { vIn.focus(); vIn.select(); } catch (e) {  }
+  go.onclick = function () {
+    var v = Math.round(+vIn.value);
+    if (!(v >= 1 && v <= 999) || String(vIn.value).indexOf(".") >= 0) { prog.textContent = "⚠ 第幾版要打 1～999 的整數"; vIn.focus(); return; }
+    var pick = hits.filter(function (x, k) { return cbs[k].checked; });
+    if (!pick.length) return;
+    go.disabled = true; no.disabled = true; D.bx._busy = true;
+    cbs.forEach(function (c) { c.disabled = true; }); vIn.disabled = true;
+    dupUpload(f, function (t) { prog.textContent = t; }).then(function (r) {
+      pick.forEach(function (x) {
+        var it = x.x;
+        it.u = r.url; it.ver = v; it.fn = String(f.name).slice(0, 120);
+        if (it.k === "web" || it.k === "ext") delete it.k;
+        if (!String(it.t || "").trim()) it.t = base.slice(0, 40);
+      });
+      D.bx._busy = false; D.close();
+      markDirty(); renderEdit();
+      toast("📄 換好了 " + pick.length + " 個連結（第 " + v + " 版），存檔中…");
+      saveEd(false);
+    }, function (e) {
+      D.bx._busy = false; no.disabled = false; go.disabled = false; cbs.forEach(function (c) { c.disabled = false; }); vIn.disabled = false;
+      prog.textContent = "❌ 沒有換：" + (e && e.message || "上傳失敗") + "（手冊什麼都沒改）";
+    });
+  };
+}
+function dupUpload(f, say) {
+  var fail = function (r, d) { if (r && r.st === "lock") logout("expired"); throw new Error(r && r.err || d); };
+  say("⏳ 準備上傳…");
+  return call("hbDocUp", ["start", { name: f.name, size: f.size }]).then(function (r) {
+    if (!r || !r.ok || !r.id) fail(r, "後端不收這個檔");
+    var part = Math.max(256 * 1024, +r.part || 4194304), n = Math.ceil(f.size / part), id = r.id, i = 0;
+    var next = function () {
+      if (i >= n) { say("⏳ 接起來、放進雲端硬碟…"); return call("hbDocUp", ["end", { id: id, n: n }], { ms: 180000 }).then(function (e) { if (!e || !e.ok || !e.url) fail(e, "放不進雲端硬碟"); say("✅ 上傳好了"); return e; }); }
+      var k = i;
+      return dupB64(f.slice(k * part, Math.min(f.size, (k + 1) * part))).then(function (b64) {
+        say("⏳ 上傳中… " + Math.round(k / n * 100) + "%（第 " + (k + 1) + "／" + n + " 段）");
+        return call("hbDocUp", ["part", { id: id, i: k, b64: b64 }], { ms: 180000 });
+      }).then(function (p) { if (!p || !p.ok) fail(p, "第 " + (k + 1) + " 段沒傳上去"); i++; return next(); });
+    };
+    return next();
+  });
+}
+function dupB64(blob) {
+  return new Promise(function (ok, bad) {
+    var rd = new FileReader();
+    rd.onload = function () { var s = String(rd.result || ""), j = s.indexOf(","); ok(j >= 0 ? s.slice(j + 1) : s); };
+    rd.onerror = function () { bad(new Error("讀不到這個檔")); };
+    rd.readAsDataURL(blob);
+  });
 }
 
 var TW_MAX_R = 200, TW_MAX_C = 12;
@@ -19048,7 +19340,7 @@ function exTitleUnits(hb, c, t, tl, kids) {
     if (b.t === "text") exTextUnits(out, tname, b, hb, c.id, bi, tl);
     else if (b.t === "ladder") exLadderUnits(out, tname, b, bi);
     else if (b.t === "table") { var F = exFrag(tname, true); exPut(F, exTable(b, bi, false, F)); if (F.xml) out.push(F); }
-    else if (b.t === "img" && b.url) { var F2 = exFrag(tname, true); exPicFrag(F2, b, bi); out.push(F2); }
+    else if (b.t === "img" && b.url) { var F2 = exFrag(tname, true); exPicFrag(F2, b, bi); out.push(F2); if (!b.draw) (b.g || []).forEach(function (p) { if (!p || !p.url) return; var F5 = exFrag(tname, true); exPicFrag(F5, p, bi); out.push(F5); }); }
     else if (b.t === "anim" && b.kind === "steps") {
       var ss = (b.steps || []).filter(function (s) { return s && (s.url || String(s.cap || "").trim()); });
       ss.forEach(function (s, k) {
@@ -19236,7 +19528,7 @@ function exPicList(hb, chs) {
         if (!b) return;
         if (b.t === "text") _yzTextPics_(b).forEach(add);
         else if (b.t === "table") _yzTblPics_(b).forEach(add);
-        else if (b.t === "img") add(b);
+        else if (b.t === "img") { add(b); if (!b.draw) (b.g || []).forEach(function (p) { if (p && p.url) add(p); }); }
         else if (b.t === "ladder") (b.items || []).forEach(function (it) { if (it && it.img) add(it.img); });
         else if (b.t === "anim" && b.kind === "steps") (b.steps || []).forEach(function (s) { if (s && s.url) add(s); });
         else if (b.t === "anim" && b.url) add(exAnimPic(b));

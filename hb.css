@@ -789,6 +789,26 @@ body.drw-noscroll{overflow:hidden}
 .pano{height:clamp(300px,calc(44cqw + 52px),75vh);border-radius:14px;overflow:hidden;box-shadow:0 6px 20px rgba(30,20,10,.18)}
 .pvweb .pano,.pvpano .pano{height:clamp(260px,calc(46cqw + 52px),70vh)}
 .pvpano{container-type:inline-size;width:100%}
+.imgrow,.imgside{margin-top:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:10px;background:var(--bg2,#F7FAF9);display:flex;flex-direction:column;gap:6px}
+.imgrow-h,.imgside-r{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13.5px}
+.imgrow-l{display:flex;flex-direction:column;gap:5px}
+.imgrow-i{display:flex;align-items:center;gap:6px}
+.imgrow-t{width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none;background:#fff}
+.imgrow-n{flex:none;font-size:12.5px;color:var(--ink3);width:3.6em}
+.imgrow-i .in{flex:1 1 auto;min-width:0}
+.imgrow-a{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.imgrow-c{display:inline-flex;align-items:center;gap:4px}
+.imgrow-c .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.imgside-s{width:auto;max-width:100%}
+.imgside-w{width:auto}
+.imgside-n{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#8A4B00}
+.dup-m{display:flex;flex-direction:column;gap:8px;max-height:min(60vh,520px);overflow:auto}
+.dup-i{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;line-height:1.45;cursor:pointer}
+.dup-i input{margin-top:3px;flex:none}
+.dup-i small{display:block;color:var(--ink3)}
+.dup-v{display:flex;align-items:center;gap:8px;font-size:14px;flex-wrap:wrap}
+.dup-v input{width:6em}
+.dup-p{font-size:13px;color:var(--accent);font-weight:700}
 
 .y3d{--ln:clamp(14px,2.3cqw,28px);position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:#1f1a15;border-radius:inherit;outline:none;touch-action:none;user-select:none;-webkit-user-select:none;container-type:inline-size;cursor:grab;-webkit-tap-highlight-color:transparent}
 .y3d-stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;overflow:clip;background:#2a241e}
@@ -2325,3 +2345,32 @@ html.hb-off .hstage{--hsh:calc(100dvh - var(--mqh) - var(--offh,44px))}
 html.hb-off .pg.book{height:calc(100dvh - var(--offh,44px))}
 html.hb-off #pane-view .side{top:calc(var(--tabsH,58px) + 8px + var(--offh,44px))}
 @media (max-width:560px){.offbar{font-size:12.5px;padding:6px 10px}}
+.art .figsw{margin:10px 0}
+.art .figs{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:8px;align-items:start}
+.art .figs>figure.xpic{max-width:none;margin:0;min-width:0}
+.art .figs .xp-zs{display:none}
+.art .figs .xp-bar{padding:3px 6px;font-size:12px}
+.art .figs .xp-i{display:none}
+.figs-hint{display:none}
+@media (max-width:640px){
+  .art .figs{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;padding-bottom:6px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .art .figs>figure.xpic{flex:0 0 82%;scroll-snap-align:start}
+  .art .figs[data-n="1"]>figure.xpic{flex-basis:100%}
+  .figs-hint{display:block;margin-top:2px;font-size:12px;color:var(--ink3);text-align:right}
+}
+.art .sdx{margin:10px 0}
+.art .sdx>*{min-width:0}
+.art .sdx.sdcol{display:grid;grid-template-columns:minmax(0,var(--sdw,40%)) minmax(0,1fr);gap:16px;align-items:start}
+.art .sdx.sdcol.sd-r{grid-template-columns:minmax(0,1fr) minmax(0,var(--sdw,40%))}
+.art .sdx.sdcol.sd-r>:first-child{order:2}
+.art .sdx.sdcol>:first-child{margin-top:0;margin-bottom:0}
+.art .sdx.sdcol>figure.xpic,.art .sdx.sdwrap>figure.xpic{max-width:none}
+.art .sdx.sdwrap{display:flow-root}
+.art .sdx.sdwrap>:first-child{float:left;width:var(--sdw,40%);margin:2px 16px 8px 0}
+.art .sdx.sdwrap.sd-r>:first-child{float:right;margin:2px 0 8px 16px}
+@media (max-width:520px){
+  .art .sdx.sdcol{display:block}
+  .art .sdx.sdcol>:first-child{margin-bottom:10px}
+  .art .sdx.sdwrap>:first-child{float:none;width:auto;margin:0 0 10px}
+}
+.rbk-flow .sdx.sdcol,.rbk-flow .figsw{break-inside:avoid}
