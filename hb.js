@@ -622,7 +622,9 @@ function _yzTextLines_(text, o) {
       i++; continue;
     }
     if (L.k === "img") {
-      var P = o.pics && o.pics[L.img], im = P && P.url ? _yzImage_(P, o.pact ? o.pact(L.img) : null) : null;
+      var P = o.pics && o.pics[L.img], pr = P && P.url ? _yzPicRow_(P) : [], im = null;
+      if (pr.length > 1 && YZ_CFG.imgDirect) im = _yzPicGrid_(pr, P.cols, function (k) { return o.pact ? o.pact(L.img, "", k) : null; });
+      else if (pr.length) im = _yzImage_(pr.length > 1 ? Object.assign({}, P, { cap: (P.cap ? P.cap + "　" : "") + "（共 " + pr.length + " 張）" }) : P, o.pact ? o.pact(L.img) : null);
       if (im) { out.push(_yzIndent_(im, pad)); first = false; }
       i++; continue;
     }
@@ -2015,7 +2017,7 @@ function _yzLinkLines_(b) {
 
 function _yzBlockNodes_(b, act, bs, ctx) {
   ctx = ctx || {};
-  if (b.t === "text") return _yzTextLines_(b.v, { go: ctx.go, pics: b.pics, tbls: b.tbls, bs: bs, pact: ctx.pact ? function (id, tid) { return ctx.pact(b, id, tid); } : null });
+  if (b.t === "text") return _yzTextLines_(b.v, { go: ctx.go, pics: b.pics, tbls: b.tbls, bs: bs, pact: ctx.pact ? function (id, tid, s) { return ctx.pact(b, id, tid, s); } : null });
   if (b.t === "ladder") return _yzLadderLines_(b, { bs: bs, act: act ? function (k) { return act(b, k); } : null });
   if (b.t === "table") { var x = _yzTable_(b, { bs: bs, pact: ctx.pact ? function (id) { return ctx.pact(b, id); } : null }); return x ? [x] : []; }
   if (b.t === "img") { var y = b.draw ? _yzDrawImage_(b, act ? act(b) : null) : _yzImage_(b, act ? act(b) : null); return y ? [y] : []; }
@@ -2062,7 +2064,7 @@ function _yzLayOf_(t, cfg) { return t && (t.lay === "page" || t.lay === "swipe")
 function _yzContentBubbles_(ch, ti, blocks, note, o) {
   o = o || {};
   var act = function (b, s) { return _yzPB_("yz=img&t=" + ti.id + "&i=" + (b.i === undefined ? 0 : b.i) + (s === undefined ? "" : "&s=" + s), "看大圖"); };
-  var pact = function (b, id, tid) { return _yzPB_("yz=img&t=" + ti.id + "&i=" + (b.i === undefined ? 0 : b.i) + "&p=" + id + (tid ? "&tb=" + tid : ""), "看大圖"); };
+  var pact = function (b, id, tid, s) { return _yzPB_("yz=img&t=" + ti.id + "&i=" + (b.i === undefined ? 0 : b.i) + "&p=" + id + (tid ? "&tb=" + tid : "") + (s > 0 ? "&s=" + s : ""), "看大圖"); };
   var segs = [{ nodes: [] }], used = { n: 0 };
   var cur = function () { return segs[segs.length - 1]; };
   var hasNote = !!_yzNote_(note, ti.page);
@@ -2222,7 +2224,7 @@ function _yzTextPics_(b) {
   var pics = b.pics && typeof b.pics === "object" ? b.pics : {}, tbls = b.tbls && typeof b.tbls === "object" ? b.tbls : {};
   String(b.v || "").split("\n").forEach(function (ln) {
     var m = /^[ 　\t]*\[(img|tbl)=([A-Za-z0-9_-]+)\]/.exec(ln); if (!m) return;
-    if (m[1] === "img") { var p = pics[m[2]]; if (p && p.url && out.indexOf(p) < 0) out.push(p); }
+    if (m[1] === "img") _yzPicRow_(pics[m[2]]).forEach(function (p) { if (out.indexOf(p) < 0) out.push(p); });
     else _yzTblPics_(tbls[m[2]]).forEach(function (q) { if (out.indexOf(q) < 0) out.push(q); });
   });
   return out;
@@ -2242,6 +2244,25 @@ function _yzImgAll_(b) {
   return [b].concat(b.draw ? [] : (Array.isArray(b.g) ? b.g : []).filter(function (x) { return x && x.url; }));
 }
 function _yzImgGroup_(b) { return _yzImgAll_(b).length > 1; }
+function _yzPicRow_(p) {
+  if (!p || !p.url) return [];
+  return [p].concat((Array.isArray(p.g) ? p.g : []).filter(function (x) { return x && x.url; }));
+}
+function _yzPicGrid_(ps, cols, actOf) {
+  var per = Math.round(+cols) === 2 ? 2 : 3, rows = [];
+  for (var r = 0; r < ps.length; r += per) {
+    var cells = ps.slice(r, r + per).map(function (p, k) {
+      var img = { type: "image", url: p.url, size: "full", aspectMode: "cover", aspectRatio: "1:1" }, a = actOf ? actOf(r + k) : null;
+      if (a) img.action = a;
+      var c = { type: "box", layout: "vertical", flex: 1, spacing: "xs", contents: [img] }, t = _yzT_(p.cap, { size: "xxs", color: "#6B7280", align: "center" });
+      if (t) c.contents.push(t);
+      return c;
+    });
+    while (cells.length < per) cells.push({ type: "filler", flex: 1 });
+    rows.push({ type: "box", layout: "horizontal", spacing: "sm", contents: cells });
+  }
+  return { type: "box", layout: "vertical", spacing: "sm", contents: rows };
+}
 function _yzTitlePics_(t) {
   var out = [];
   (t && t.blocks || []).forEach(function (b) {
@@ -4583,46 +4604,59 @@ function rtKids1(runs, hl) {
 }
 function webText(v, hl, o) {
   o = o || {};
-  var box = h("div", { class: "txtb" }), ls = _yzParseLines_(v, o.plain), i = 0, j;
+  var box = h("div", { class: "txtb" }), ls = _yzParseLines_(v, o.plain), i = 0, j, tgt = box, sdEnd = -1;
   function ind(L) { return L.lv ? "padding-left:" + (L.lv * 1.6) + "em" : ""; }
   function indM(L) { return L.lv ? "margin-left:" + (L.lv * 1.6) + "em;" : ""; }
   while (i < ls.length) {
+    if (sdEnd >= 0 && i >= sdEnd) { tgt = box; sdEnd = -1; }
     var L = ls[i];
-    if (L.k === "gap") { box.appendChild(h("div", { style: "height:.45em" })); i++; continue; }
-    if (L.k === "hr") { box.appendChild(h("hr", { class: "rt-hr", style: indM(L) })); i++; continue; }
+    if (L.k === "gap") { tgt.appendChild(h("div", { style: "height:.45em" })); i++; continue; }
+    if (L.k === "hr") { tgt.appendChild(h("hr", { class: "rt-hr", style: indM(L) })); i++; continue; }
     if (L.k === "go") {
       var tg = o.go ? o.go(L.go) : null;
-      if (tg && tg.label) box.appendChild(h("a", { class: "rt-go" + (tg.kind === "c" ? " ch" : ""), href: "#", style: ind(L), onclick: function (id, kind) { return function (e) { e.preventDefault(); if (kind === "c") { if (o.onChapter) o.onChapter(id); } else if (o.onTitle) o.onTitle(id); }; }(L.go, tg.kind) }, [h("span", {}, [tg.kind === "c" ? "📚" : "→"]), h("b", {}, [tg.label]), h("span", {}, ["›"])]));
+      if (tg && tg.label) tgt.appendChild(h("a", { class: "rt-go" + (tg.kind === "c" ? " ch" : ""), href: "#", style: ind(L), onclick: function (id, kind) { return function (e) { e.preventDefault(); if (kind === "c") { if (o.onChapter) o.onChapter(id); } else if (o.onTitle) o.onTitle(id); }; }(L.go, tg.kind) }, [h("span", {}, [tg.kind === "c" ? "📚" : "→"]), h("b", {}, [tg.label]), h("span", {}, ["›"])]));
       i++; continue;
     }
     if (L.k === "tbl") {
       var TB = o.tbls && o.tbls[L.tbl];
-      if (TB) { var tw = webTable(TB, hl, { onImg: o.onImg, still: o.still }); tw.className += " rt-tbl"; if (L.lv) tw.style.marginLeft = (L.lv * 1.6) + "em"; box.appendChild(tw); }
+      if (TB) { var tw = webTable(TB, hl, { onImg: o.onImg, still: o.still }); tw.className += " rt-tbl"; if (L.lv) tw.style.marginLeft = (L.lv * 1.6) + "em"; tgt.appendChild(tw); }
       i++; continue;
     }
     if (L.k === "img") {
       var P = o.pics && o.pics[L.img];
-      if (P && P.url) box.appendChild(o.cell ? webCellPic(P, hl, o) : webFig(P, { hl: hl, onImg: o.onImg, cls: "rt-img", style: indM(L), still: o.still }));
+      if (P && P.url && o.cell) tgt.appendChild(webCellPic(P, hl, o));
+      else if (P && P.url) {
+        var fe = _yzPicRow_(P).length > 1 ? webFigs(Object.assign({ t: "img" }, P), { hl: hl, onImg: o.onImg, still: o.still }) : webFig(P, { hl: hl, onImg: o.onImg, cls: "rt-img", style: (P.sd === "l" || P.sd === "r") && tgt === box ? "" : indM(L), still: o.still });
+        if (fe.className.indexOf("figsw") >= 0) { fe.classList.add("rt-figs"); if (L.lv) fe.style.marginLeft = (L.lv * 1.6) + "em"; }
+        var sdj = i + 1;
+        if ((P.sd === "l" || P.sd === "r") && tgt === box) while (sdj < ls.length && ["gap", "img", "tbl", "hr"].indexOf(ls[sdj].k) < 0) sdj++;
+        if (sdj > i + 1) {
+          var sub = h("div", { class: "txtb rt-sdt" }), sw = Math.max(20, Math.min(70, Math.round(+P.sw) || 40));
+          fe.style.marginLeft = "";
+          tgt.appendChild(h("div", { class: "sdx rt-sdx " + (P.sm === "wrap" ? "sdwrap" : "sdcol") + " sd-" + P.sd, style: indM(L) + "--sdw:" + sw + "%" }, [fe, sub]));
+          tgt = sub; sdEnd = sdj;
+        } else tgt.appendChild(fe);
+      }
       i++; continue;
     }
     if (L.k === "box") {
       var T = _yzRtTone_(L.tone), lines = [];
       for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) lines.push(h("div", { class: "rt-bl" }, rtKids(ls[j].runs, hl)));
-      box.appendChild(h("div", { class: "rt-box" + (lines.length > 1 ? " rows" : "") + (T.icon ? "" : " noic"), "data-tone": L.tone, style: indM(L) + "background:" + T.bg + ";border-color:" + T.bd + ";color:" + T.ink + ";--bd:" + T.bd }, (T.icon ? [h("span", { class: "rt-ic" }, [T.icon])] : []).concat([h("div", { class: "rt-bb" }, lines)])));
+      tgt.appendChild(h("div", { class: "rt-box" + (lines.length > 1 ? " rows" : "") + (T.icon ? "" : " noic"), "data-tone": L.tone, style: indM(L) + "background:" + T.bg + ";border-color:" + T.bd + ";color:" + T.ink + ";--bd:" + T.bd }, (T.icon ? [h("span", { class: "rt-ic" }, [T.icon])] : []).concat([h("div", { class: "rt-bb" }, lines)])));
       i = j; continue;
     }
     if (L.k === "quote") {
       var qs = [];
       for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) qs.push(h("div", { class: "rt-bl" }, rtKids(ls[j].runs, hl)));
-      box.appendChild(h("div", { class: "rt-quote", style: indM(L) }, qs));
+      tgt.appendChild(h("div", { class: "rt-quote", style: indM(L) }, qs));
       i = j; continue;
     }
     if (L.k === "head") {
       var H = YZ_RT_HEAD["h" + L.h];
-      box.appendChild(h("div", { class: "rt-h rt-h" + L.h, style: "font-size:" + H.em + "em;color:" + H.color + (L.lv ? ";padding-left:" + (L.lv * 1.6 / H.em).toFixed(2) + "em" : "") }, rtKids(L.runs, hl)));
+      tgt.appendChild(h("div", { class: "rt-h rt-h" + L.h, style: "font-size:" + H.em + "em;color:" + H.color + (L.lv ? ";padding-left:" + (L.lv * 1.6 / H.em).toFixed(2) + "em" : "") }, rtKids(L.runs, hl)));
     } else if (L.k === "item") {
-      box.appendChild(h("div", { class: "li", style: ind(L) }, [h("span", { class: "mkr" }, [L.mark]), h("span", {}, rtKids(L.runs, hl))]));
-    } else box.appendChild(h("div", { class: "txt", style: ind(L) }, rtKids(L.runs, hl)));
+      tgt.appendChild(h("div", { class: "li", style: ind(L) }, [h("span", { class: "mkr" }, [L.mark]), h("span", {}, rtKids(L.runs, hl))]));
+    } else tgt.appendChild(h("div", { class: "txt", style: ind(L) }, rtKids(L.runs, hl)));
     i++;
   }
   return box;
@@ -9465,6 +9499,85 @@ function rteCreate(o) {
     if (r.m && YZ_RT_MARKS[r.m]) { sp.setAttribute("data-m", r.m); sp.style.backgroundColor = YZ_RT_MARKS[r.m].bg; }
     return sp;
   }
+  function rlRowOk() { return typeof bk66 === "function" ? bk66() : true; }
+  function rlStop(el, evs) { (evs || ["keydown", "keyup", "keypress", "beforeinput", "input", "paste", "copy", "cut", "compositionstart", "compositionend", "mousedown", "click"]).forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); }); return el; }
+  function rlRedraw(d, L) { var nd = lineEl(L); if (d.parentNode) d.parentNode.replaceChild(nd, d); if (o.onPics) o.onPics(); }
+  function rlImgSwap(P, q) {
+    var p0 = {};
+    ["url", "fid", "fname", "ar", "info", "cap", "ocr"].forEach(function (k) { if (P[k] !== undefined) p0[k] = P[k]; if (q[k] !== undefined) P[k] = q[k]; else delete P[k]; });
+    return p0;
+  }
+  function rlBtn(label, fn, cls, title) { var b = h("button", { class: "btn sm" + (cls ? " " + cls : ""), type: "button", title: title || null, onclick: function (e) { e.preventDefault(); fn(); } }, [label]); return rlStop(b, ["keydown", "mousedown"]); }
+  function rlImgRow(P, L, d) {
+    var ok = rlRowOk(), g = Array.isArray(P.g) ? P.g : [], max = typeof ED_IMG_G_MAX === "number" ? ED_IMG_G_MAX : 11;
+    var box = h("div", { class: "imgrow rl-imgrow" }, [h("div", { class: "imgrow-h" }, [h("b", {}, ["📷 同一排再加照片"]), h("span", { class: "muted" }, [ok ? "　電腦、平板一排 2～6 張；手機往左滑；LINE 一列 2～3 張" : "　（Apps Script 的 02 換成第 66 批以後才存得住）"])])]);
+    if (!ok && !g.length) return box;
+    var list = h("div", { class: "imgrow-l" });
+    g.forEach(function (p, k) {
+      var c = rlStop(h("input", { class: "in sm", value: p.cap || "", placeholder: "第 " + (k + 2) + " 張的圖說（可以不填）", "aria-label": "第 " + (k + 2) + " 張的圖說" }));
+      c.addEventListener("input", function () { p.cap = c.value; if (o.onPics) o.onPics(); });
+      var mv = function (dd) { var j = k + dd; if (j < 0 || j >= g.length) return; g.splice(j, 0, g.splice(k, 1)[0]); rlRedraw(d, L); };
+      list.appendChild(h("div", { class: "imgrow-i", "data-k": String(k) }, [
+        h("img", { src: p.url, alt: "", class: "imgrow-t" }), h("span", { class: "imgrow-n" }, ["第 " + (k + 2) + " 張"]), c,
+        rlBtn("◀", function () { if (k === 0) { g[0] = rlImgSwap(P, p); rlRedraw(d, L); } else mv(-1); }, "", k === 0 ? "換成第一張" : "往前"),
+        rlBtn("▶", function () { mv(1); }, "", "往後"),
+        rlBtn("✕", function () { g.splice(k, 1); if (!g.length) { delete P.g; delete P.cols; } rlRedraw(d, L); }, "bad", "拿掉這一張")
+      ]));
+    });
+    box.appendChild(list);
+    var fi = h("input", { type: "file", accept: "image/jpeg,image/png,image/gif,image/webp,image/bmp", multiple: true, style: "display:none" });
+    var add = rlBtn("＋ 再加照片（可以一次選好幾張）", function () { fi.click(); });
+    if (!ok || g.length >= max) add.disabled = true;
+    fi.onchange = function () {
+      var fs = Array.prototype.slice.call(fi.files || []).slice(0, max - g.length); fi.value = "";
+      if (!fs.length) return;
+      var left = fs.length, got = [];
+      fs.forEach(function (f, k) {
+        o.imgUp(f, function (p) {
+          if (p) got[k] = { url: p.url, fid: p.fid, fname: p.fname, ar: p.ar, info: p.info, cap: "" };
+          if (--left) return;
+          var add2 = got.filter(Boolean);
+          if (!add2.length) return;
+          if (!Array.isArray(P.g)) P.g = [];
+          add2.forEach(function (x) { if (P.g.length < max) { P.g.push(x); if (o.onPics) o.onPics(x); } });
+          if (!(P.cols >= 2)) P.cols = Math.min(3, P.g.length + 1);
+          rlRedraw(d, L);
+          if (typeof toast === "function") toast("放好了 " + add2.length + " 張（已縮小、檔名換成亂碼）");
+        }, true, true);
+      });
+    };
+    var cs = h("span", { class: "imgrow-c" }, [h("span", { class: "muted" }, ["一排幾張："])]);
+    [2, 3, 4, 5, 6].forEach(function (n) {
+      var on = (+P.cols || 2) === n, bb = rlBtn(String(n), function () { P.cols = n; rlRedraw(d, L); }, on ? "on" : "");
+      bb.setAttribute("aria-pressed", String(on));
+      if (!g.length) bb.disabled = true;
+      cs.appendChild(bb);
+    });
+    box.appendChild(h("div", { class: "imgrow-a" }, [add, fi, cs]));
+    return box;
+  }
+  function rlImgSide(P, L, d) {
+    var ok = rlRowOk(), cur = P.sd === "l" || P.sd === "r" ? (P.sm === "wrap" ? "w" : "c") + P.sd : "", box = h("div", { class: "imgside rl-imgsd" });
+    var opts = [["", "不要（圖自己一行）"], ["cl", "圖在左、字在右（並排）"], ["cr", "圖在右、字在左（並排）"], ["wl", "文繞圖：圖在左，字繞著圖"], ["wr", "文繞圖：圖在右，字繞著圖"]];
+    var sel = rlStop(h("select", { class: "in sm imgside-s", "aria-label": "旁邊放文字" }, opts.map(function (x) { var op = h("option", { value: x[0] }, [x[1]]); if (x[0] === cur) op.selected = true; return op; })));
+    if (!ok && !cur) sel.disabled = true;
+    sel.addEventListener("change", function () {
+      var v = sel.value;
+      if (!v) { delete P.sd; delete P.sm; delete P.sw; } else { P.sd = v.charAt(1); if (v.charAt(0) === "w") P.sm = "wrap"; else delete P.sm; if (!P.sw) P.sw = 40; }
+      rlRedraw(d, L);
+    });
+    var ws = rlStop(h("select", { class: "in sm imgside-w", "aria-label": "圖佔多寬" }, [[25, "圖佔 1/4"], [33, "圖佔 1/3"], [40, "圖佔 40%"], [50, "圖佔一半"], [60, "圖佔 60%"]].map(function (x) { var op = h("option", { value: String(x[0]) }, [x[1]]); if ((+P.sw || 40) === x[0]) op.selected = true; return op; })));
+    ws.addEventListener("change", function () { P.sw = +ws.value; if (o.onPics) o.onPics(); });
+    if (!cur) ws.disabled = true;
+    box.appendChild(h("div", { class: "imgside-r" }, [h("b", {}, ["📝 旁邊放文字："]), sel, ws]));
+    if (!ok) box.appendChild(h("div", { class: "muted mcn" }, ["（Apps Script 的 02 換成第 66 批以後才存得住）"]));
+    else if (cur) {
+      var li = lines.indexOf(L) >= 0 ? lines.indexOf(L) : Array.prototype.indexOf.call(body.childNodes, d), nx = li >= 0 ? lines[li + 1] : null;
+      if (!nx || rteIsBlock(nx) || !rteLen(nx)) box.appendChild(h("div", { class: "imgside-n" }, ["⚠️ 放在旁邊的是「這張圖下面那一段字」（到空白行為止）：下面還沒有字。游標放在圖下面那一行打字就好。"]));
+      else box.appendChild(h("div", { class: "muted mcn" }, ["放在旁邊的是這張圖下面那一段字（到空白行、下一張圖、表格為止）。手機太窄：圖在上、字在下。LINE：照順序（圖、再來字）。"]));
+    }
+    return box;
+  }
   function removeLine(d) {
     run(function (ls) {
       var li = Array.prototype.indexOf.call(body.childNodes, d);
@@ -9522,10 +9635,14 @@ function rteCreate(o) {
           pw.addEventListener("change", function () { var v = +pw.value; if (v >= 100) delete P.pw; else P.pw = v; if (o.onPics) o.onPics(); });
           side.appendChild(pw);
         }
+        if (!o.cell && o.imgUp) { side.appendChild(rlImgRow(P, L, d)); side.appendChild(rlImgSide(P, L, d)); }
         d.appendChild(h("img", { class: "rl-imgsrc", src: P.url, alt: "" }));
         d.appendChild(side);
       }
-      d.appendChild(h("button", { class: "rl-x", type: "button", title: "刪除這張圖", "aria-label": "刪除這張圖", onclick: function () { removeLine(d); } }, ["✕"]));
+      d.appendChild(h("button", { class: "rl-x", type: "button", title: "刪除這張圖", "aria-label": "刪除這張圖", onclick: function () {
+        if (P && P.url && Array.isArray(P.g) && P.g.length) { rlImgSwap(P, P.g.shift()); if (!P.g.length) { delete P.g; delete P.cols; } rlRedraw(d, L); return; }
+        removeLine(d);
+      } }, ["✕"]));
       return d;
     }
     if (L.k === "tbl") {
@@ -12553,7 +12670,7 @@ function blockEditor(t, b, i) {
       onPics: function (p) { if (p) edOcrNew(p); changed(); }, picInfo: ocrLine,
       tbls: function () { if (!b.tbls || typeof b.tbls !== "object") b.tbls = {}; return b.tbls; },
       tblEdit: function (id, done) { edTblModal(t, b, id, done); },
-      imgUp: function (file, cb, swap) { if (!swap && _yzImgIds_(b.v).length >= ED_TEXT_PICS_MAX) { toast("一塊文字最多放 " + ED_TEXT_PICS_MAX + " 張圖：請放到下一塊"); cb(null); return; } edImgUp(file, cb); },
+      imgUp: function (file, cb, swap, quiet) { if (!swap && _yzImgIds_(b.v).length >= ED_TEXT_PICS_MAX) { toast("一塊文字最多放 " + ED_TEXT_PICS_MAX + " 張圖：請放到下一塊"); cb(null); return; } edImgUp(file, cb, quiet); },
       onTablePaste: tb52Ok() ? function (x) { if (x.html) twPasteText(rte, x, t, b); else if (x.text) rte.cmd.text(x.text, "plain"); } : null });
     body.appendChild(rte.el);
     body.appendChild(hint("選取文字 → 按最上面第二排的按鍵（粗體、顏色、大小）。整行的變化（標題、項目符號、編號、標註、分隔線…）：游標放在那一行，按對應的鍵，再按一次就取消。Enter 換行，清單會自動接下一個符號；Ctrl+Z 復原。圖片可以直接放在文字裡：游標放在那一行，按「🖼 圖片」（或把圖拖進來、Ctrl+V 貼上），圖會放在那一行下面、跟那一行一樣縮排。要做像法條那樣一層一層的編號，請用「＋階梯式內容」。"));
@@ -12597,6 +12714,7 @@ function blockEditor(t, b, i) {
 }
 var ED_IMG_G_MAX = 11;
 function bk64() { return backAtLeast(12, 27); }
+function bk66() { return backAtLeast(12, 28); }
 function edImgPromote(b) {
   var p = b.g.shift();
   b.url = p.url; b.fid = p.fid || ""; b.fname = p.fname || ""; b.info = p.info || null; b.ar = p.ar || b.ar; b.cap = p.cap || "";
@@ -19276,7 +19394,7 @@ function exTextUnits(out, tname, b, hb, cid, bi, tl) {
       i++; continue;
     }
     if (L.k === "tbl") { var TB = b.tbls && b.tbls[L.tbl]; if (TB) { var FT = add(""); FT.xml = exTable(TB, base(L), false, FT); } i++; continue; }
-    if (L.k === "img") { var P = b.pics && b.pics[L.img]; if (P && P.url) { var F = exFrag(tname, true); exPicFrag(F, P, base(L)); out.push(F); } i++; continue; }
+    if (L.k === "img") { var P = b.pics && b.pics[L.img]; _yzPicRow_(P).forEach(function (q) { var F = exFrag(tname, true); exPicFrag(F, q, base(L)); out.push(F); }); i++; continue; }
     if (L.k === "box") {
       var T = _yzRtTone_(L.tone), xml = "";
       for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) {

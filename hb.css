@@ -802,6 +802,11 @@ body.drw-noscroll{overflow:hidden}
 .imgside-s{width:auto;max-width:100%}
 .imgside-w{width:auto}
 .imgside-n{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#8A4B00}
+.rl-imgrow,.rl-imgsd{margin-top:4px;padding:6px 8px}
+.rl-imgrow .imgrow-t{width:48px;height:36px}
+.art .rt-sdx{margin:8px 0}
+.art .rt-sdx .rt-sdt{min-width:0}
+.art .rt-figs{margin:8px 0}
 .dup-m{display:flex;flex-direction:column;gap:8px;max-height:min(60vh,520px);overflow:auto}
 .dup-i{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;line-height:1.45;cursor:pointer}
 .dup-i input{margin-top:3px;flex:none}
