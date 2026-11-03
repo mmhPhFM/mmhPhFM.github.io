@@ -76,15 +76,49 @@ function _yzRtBox_(v) {
 var YZ_RT_MAXLV = 3;
 var YZ_CP_MAX = 500;
 var YZ_WR_MAX = 200;
+var YZ_WR_LINES = 4;
+var YZ_WR_SIZES = [50, 64, 80, 100];
+var YZ_WR_LH = [100, 115, 140, 170];
+var YZ_WR_LS = [0, 8, 15, 25];
+var YZ_WR_MG = [0, 30, 60, 100];
+function _yzWrNear_(list, v, d) { var best = d; list.forEach(function (x) { if (Math.abs(x - v) < Math.abs(best - v)) best = x; }); return best; }
 function _yzWrClean_(s) { return String(s === null || s === undefined ? "" : s).replace(/\[\/(?:w|並)\]/gi, "").replace(/[\r\n\t]+/g, " ").replace(/\|/g, "｜").replace(/｜{2,}/g, "｜").replace(/^[\s｜]+|[\s｜]+$/g, "").slice(0, YZ_WR_MAX); }
-function _yzWrSplit_(s) {
-  s = _yzWrClean_(s);
-  var k = s.indexOf("｜");
-  if (k >= 0) return [s.slice(0, k).replace(/\s+$/, ""), s.slice(k + 1).replace(/｜/g, "").replace(/^\s+/, "")];
-  var cs = Array.from ? Array.from(s) : s.split(""), h = Math.ceil(cs.length / 2);
-  return [cs.slice(0, h).join(""), cs.slice(h).join("")];
+function _yzWrOpt_(o) {
+  var r = { al: "j", n: 2, s: 64, h: 115, k: 8, m: 30 };
+  String(o || "").split(/[-,，、 ]+/).forEach(function (t) {
+    if (/^[clrj]$/.test(t)) r.al = t; else if (t === "中" || t === "置中") r.al = "c"; else if (t === "左" || t === "靠左") r.al = "l"; else if (t === "右" || t === "靠右") r.al = "r"; else if (t === "撐" || t === "撐滿") r.al = "j";
+    else if (/^[2-4]$/.test(t)) r.n = +t; else if (/^[2-4]行$/.test(t)) r.n = +t.charAt(0);
+    else if (/^s\d{2,3}$/.test(t)) r.s = _yzWrNear_(YZ_WR_SIZES, +t.slice(1), 64);
+    else if (/^h\d{2,3}$/.test(t)) r.h = _yzWrNear_(YZ_WR_LH, +t.slice(1), 115);
+    else if (/^k\d{1,2}$/.test(t)) r.k = _yzWrNear_(YZ_WR_LS, +t.slice(1), 8);
+    else if (/^m\d{1,3}$/.test(t)) r.m = _yzWrNear_(YZ_WR_MG, +t.slice(1), 30);
+    else if (t === "小") r.s = 50; else if (t === "大") r.s = 80; else if (t === "特大") r.s = 100;
+  });
+  return r;
 }
-function _yzWrPlain_(s) { var p = _yzWrSplit_(s); return p[0] + p[1]; }
+function _yzWrOptStr_(o) {
+  var p = typeof o === "string" ? _yzWrOpt_(o) : o || {}, out = [];
+  if (p.al && p.al !== "j") out.push(p.al);
+  if (p.n && p.n !== 2) out.push(String(p.n));
+  if (p.s && p.s !== 64) out.push("s" + p.s);
+  if (p.h && p.h !== 115) out.push("h" + p.h);
+  if (p.k !== undefined && p.k !== 8) out.push("k" + p.k);
+  if (p.m !== undefined && p.m !== 30) out.push("m" + p.m);
+  return out.join("-");
+}
+function _yzWrSplit_(s, opt) {
+  s = _yzWrClean_(s);
+  var n = Math.max(2, Math.min(YZ_WR_LINES, (typeof opt === "number" ? opt : _yzWrOpt_(opt).n) || 2));
+  if (s.indexOf("｜") >= 0) {
+    var ps = s.split("｜").map(function (x) { return x.replace(/^\s+|\s+$/g, ""); });
+    if (ps.length > YZ_WR_LINES) ps = ps.slice(0, YZ_WR_LINES - 1).concat([ps.slice(YZ_WR_LINES - 1).join("")]);
+    return ps;
+  }
+  var cs = Array.from ? Array.from(s) : s.split(""), out = [], at = 0;
+  for (var i = 0; i < n; i++) { var k = Math.ceil((cs.length - at) / (n - i)); out.push(cs.slice(at, at + k).join("")); at += k; }
+  return out;
+}
+function _yzWrPlain_(s) { return _yzWrSplit_(s).join(""); }
 function _yzCpClean_(s) { return String(s === null || s === undefined ? "" : s).replace(/\[\/cp\]/gi, "").replace(/[ \t]*[\r\n]+[ \t]*/g, " ").replace(/\t/g, " ").replace(/^\s+|\s+$/g, "").slice(0, YZ_CP_MAX); }
 var YZ_RT_UL_MARKS = ["•", "◦", "▪", "◆", "➤", "✓", "★", "※", "\uD83D\uDD39", "\uD83D\uDD38", "\uD83D\uDCCC", "\u2757", "\u2705", "\uD83D\uDC49"];
 var YZ_RT_OL_STYLES = [["1.", "1. 2. 3."], ["1、", "1、2、3、"], ["（1）", "（1）（2）（3）"], ["①", "① ② ③"], ["一、", "一、二、三、"], ["（一）", "（一）（二）（三）"], ["壹、", "壹、貳、參、"],
@@ -92,7 +126,7 @@ var YZ_RT_OL_STYLES = [["1.", "1. 2. 3."], ["1、", "1、2、3、"], ["（1）",
 var YZ_RT_ITEM = /^((?:\d{1,2}[.、)）](?!\d)|\(\d{1,2}\)|（\d{1,2}）|[①-⑳]|[一二三四五六七八九十]{1,3}、|[（(][一二三四五六七八九十]{1,3}[）)]|[壹貳參肆伍陸柒捌玖拾]{1,3}、|[甲乙丙丁戊己庚辛壬癸]、|[（(][甲乙丙丁戊己庚辛壬癸][）)]|(?=[IVX])X{0,3}(?:IX|IV|V?I{0,3})\.(?=\s)|(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})\.(?=\s)|[A-Za-z]\.(?=\s)|[（(][A-Za-z][）)]|[•・●☐☑◦▪◆➤✓★※\u2757\u2705]\uFE0F?|\uD83D[\uDD39\uDD38\uDCCC\uDC49]|-(?=\s)))\s*/;
 
 function _yzRtRunsText_(runs) { var s = ""; for (var i = 0; i < (runs || []).length; i++) s += runs[i].t; return s; }
-function _yzRtAttrKey_(r) { var k = ""; for (var i = 0; i < YZ_RT_ORDER.length; i++) k += (r[YZ_RT_ORDER[i]] ? YZ_RT_ORDER[i] + "=" + r[YZ_RT_ORDER[i]] + ";" : ""); return k + (r.fx ? "fx;" : "") + (r.cp ? "cp;" : "") + (r.wr ? "wr;" : ""); }
+function _yzRtAttrKey_(r) { var k = ""; for (var i = 0; i < YZ_RT_ORDER.length; i++) k += (r[YZ_RT_ORDER[i]] ? YZ_RT_ORDER[i] + "=" + r[YZ_RT_ORDER[i]] + ";" : ""); return k + (r.fx ? "fx;" : "") + (r.cp ? "cp;" : "") + (r.wr ? "wr=" + (r.wo || "") + ";" : ""); }
 function _yzRtMerge_(runs) {
   var out = [];
   (runs || []).forEach(function (r) {
@@ -102,7 +136,7 @@ function _yzRtMerge_(runs) {
   });
   return out;
 }
-function _yzRtCopy_(r) { var o = { t: r.t }; for (var i = 0; i < YZ_RT_ORDER.length; i++) if (r[YZ_RT_ORDER[i]]) o[YZ_RT_ORDER[i]] = r[YZ_RT_ORDER[i]]; if (r.fx) o.fx = 1; if (r.cp) o.cp = 1; if (r.wr) o.wr = 1; return o; }
+function _yzRtCopy_(r) { var o = { t: r.t }; for (var i = 0; i < YZ_RT_ORDER.length; i++) if (r[YZ_RT_ORDER[i]]) o[YZ_RT_ORDER[i]] = r[YZ_RT_ORDER[i]]; if (r.fx) o.fx = 1; if (r.cp) o.cp = 1; if (r.wr) { o.wr = 1; if (r.wo) o.wo = r.wo; } return o; }
 function _yzRtCut_(runs, n) {
   var out = [];
   (runs || []).forEach(function (r) {
@@ -136,10 +170,10 @@ function _yzRtInline_(s) {
         var ce = s.indexOf("[/cp]", i + 4), ct = ce > i + 4 ? _yzCpClean_(s.slice(i + 4, ce)) : "";
         if (ct) { flush(); var cr = { t: ct, cp: 1 }; for (var ck in cur) cr[ck] = cur[ck]; runs.push(cr); i = ce + 5; continue; }
       }
-      var wm = /^\[(w|並)\]/.exec(s.substr(i, 3));
+      var wm = /^\[(w|並)(?:=([a-z0-9\-中左右撐滿置靠小大特行]{1,32}))?\]/.exec(s.substr(i, 40));
       if (wm) {
-        var we = s.indexOf("[/" + wm[1] + "]", i + 3), wt = we > i + 3 ? _yzWrClean_(s.slice(i + 3, we)) : "";
-        if (wt) { flush(); var wr0 = { t: wt, wr: 1 }; for (var wk in cur) wr0[wk] = cur[wk]; runs.push(wr0); i = we + 4; continue; }
+        var we = s.indexOf("[/" + wm[1] + "]", i + wm[0].length), wt = we > i + wm[0].length - 1 ? _yzWrClean_(s.slice(i + wm[0].length, we)) : "";
+        if (wt) { flush(); var wr0 = { t: wt, wr: 1 }; for (var wk in cur) wr0[wk] = cur[wk]; var wo0 = _yzWrOptStr_(wm[2] || ""); if (wo0) wr0.wo = wo0; runs.push(wr0); i = we + 4; continue; }
       }
       var m = /^\[(\/?)(b|i|u|s|c|z|m|x)(?:=([a-z0-9]+(?:\.5|-[a-z]+)?))?\]/.exec(s.substr(i, 24));
       if (m) {
@@ -165,6 +199,8 @@ function _yzRtParseLine_(ln, plain) {
   var L = { k: "p", lv: Math.min(YZ_RT_MAXLV, full + Math.floor(sp / 2)), runs: [] };
   ln = ln.slice(lead.length);
   if (!plain) {
+    var am = /^\[al=([clrj])\] ?/.exec(ln);
+    if (am) { L.al = am[1]; ln = ln.slice(am[0].length); }
     var pm = /^\[(h[1-4]|hr|q|box|go|img|tbl)(?:=([A-Za-z0-9_-]+))?\] ?/.exec(ln);
     if (pm) {
       L.k = pm[1];
@@ -185,7 +221,7 @@ function _yzRtParse_(text) {
 }
 
 function _yzRtEsc_(s) {
-  return String(s).replace(/\[(?=\[|$|\/?(?:b|i|u|s|fx|cp|w|並)\]|\/(?:c|z|m|x)\]|(?:c|z|m)=[a-z0-9]+(?:\.5)?\]|x=[a-z]+(?:-[a-z]+)?\]|(?:h[1-4]|hr|q|box|go|img|tbl)(?:=[A-Za-z0-9_-]+)?\])/g, "[[");
+  return String(s).replace(/\[(?=\[|$|\/?(?:b|i|u|s|fx|cp|w|並)\]|(?:w|並)=|al=[clrj]\]|\/(?:c|z|m|x)\]|(?:c|z|m)=[a-z0-9]+(?:\.5)?\]|x=[a-z]+(?:-[a-z]+)?\]|(?:h[1-4]|hr|q|box|go|img|tbl)(?:=[A-Za-z0-9_-]+)?\])/g, "[[");
 }
 function _yzRtSerRuns_(runs) {
   var out = "", stack = [], x;
@@ -196,7 +232,7 @@ function _yzRtSerRuns_(runs) {
     for (x = stack.length - 1; x >= j; x--) out += "[/" + stack[x].charAt(0) + "]";
     stack = stack.slice(0, j);
     for (x = j; x < want.length; x++) { out += "[" + want[x] + "]"; stack.push(want[x]); }
-    out += r.fx ? "[fx]" + _yzFxClean_(r.t) + "[/fx]" : r.cp ? "[cp]" + _yzCpClean_(r.t) + "[/cp]" : r.wr ? "[w]" + _yzWrClean_(r.t) + "[/w]" : _yzRtEsc_(r.t);
+    out += r.fx ? "[fx]" + _yzFxClean_(r.t) + "[/fx]" : r.cp ? "[cp]" + _yzCpClean_(r.t) + "[/cp]" : r.wr ? "[w" + (r.wo ? "=" + _yzWrOptStr_(r.wo) : "") + "]" + _yzWrClean_(r.t) + "[/w]" : _yzRtEsc_(r.t);
   });
   for (x = stack.length - 1; x >= 0; x--) out += "[/" + stack[x].charAt(0) + "]";
   return out;
@@ -211,7 +247,7 @@ function _yzRtSerLine_(L) {
   var pre = L.k === "box" ? "[box=" + (L.tone || "info") + "] " : (L.k && L.k !== "p" ? "[" + L.k + "] " : "");
   var body = _yzRtSerRuns_(L.runs || []);
   if (L.k === "p" && !body) return "";
-  return ind + pre + body;
+  return ind + (L.al && /^[clrj]$/.test(L.al) ? "[al=" + L.al + "]" : "") + pre + body;
 }
 function _yzRtSerialize_(lines) { return (lines || []).map(_yzRtSerLine_).join("\n"); }
 
@@ -224,7 +260,7 @@ function _yzRtPlainLines_(text) {
   return out;
 }
 function _yzRtPlain_(text) { return _yzRtPlainLines_(text).join("\n"); }
-function _yzRtHas_(text) { return /\[(?:\/?(?:b|i|u|s|fx|cp|w|並)|\/(?:c|z|m|x)|(?:c|z|m)=[a-z0-9]+|x=[a-z]+(?:-[a-z]+)?|(?:h[1-4]|hr|q|box|go|img|tbl)(?:=[A-Za-z0-9_-]+)?)\]/.test(String(text === null || text === undefined ? "" : text)); }
+function _yzRtHas_(text) { return /\[(?:\/?(?:b|i|u|s|fx|cp|w|並)|(?:w|並)=[^\]]{1,16}|al=[clrj]|\/(?:c|z|m|x)|(?:c|z|m)=[a-z0-9]+|x=[a-z]+(?:-[a-z]+)?|(?:h[1-4]|hr|q|box|go|img|tbl)(?:=[A-Za-z0-9_-]+)?)\]/.test(String(text === null || text === undefined ? "" : text)); }
 function _yzRtBoxCss_(x, runs) {
   var bx = _yzRtBox_(x); if (!bx) return "";
   var c = bx.c ? YZ_RT_COLORS[bx.c] : "";
@@ -261,6 +297,7 @@ function _yzParseLines_(text, plain) {
   var out = [];
   String(text === null || text === undefined ? "" : text).split("\n").forEach(function (ln) {
     var L = _yzRtParseLine_(ln, plain);
+    var put = function (o) { if (L.al) o.al = L.al; out.push(o); };
     if (L.k === "hr") { out.push({ k: "hr", lv: L.lv }); return; }
     if (L.k === "go") { out.push({ k: "go", go: L.go, lv: L.lv }); return; }
     if (L.k === "img") { out.push({ k: "img", img: L.img, lv: L.lv }); return; }
@@ -269,13 +306,13 @@ function _yzParseLines_(text, plain) {
     if (!pl.replace(/\s/g, "")) { out.push({ k: "gap" }); return; }
     if (L.k === "p") {
       var m = YZ_RT_ITEM.exec(pl);
-      if (m && pl.length > m[0].length) { out.push({ k: "item", mark: m[1], runs: _yzRtCut_(L.runs, m[0].length), text: pl.slice(m[0].length), lv: L.lv, indent: L.lv > 0 }); return; }
-      out.push({ k: "plain", runs: L.runs, text: pl, lv: L.lv, indent: L.lv > 0 });
+      if (m && pl.length > m[0].length) { put({ k: "item", mark: m[1], runs: _yzRtCut_(L.runs, m[0].length), text: pl.slice(m[0].length), lv: L.lv, indent: L.lv > 0 }); return; }
+      put({ k: "plain", runs: L.runs, text: pl, lv: L.lv, indent: L.lv > 0 });
       return;
     }
-    if (L.k === "box") out.push({ k: "box", tone: L.tone, runs: L.runs, text: pl, lv: L.lv });
-    else if (L.k === "q") out.push({ k: "quote", runs: L.runs, text: pl, lv: L.lv });
-    else out.push({ k: "head", h: +L.k.charAt(1), runs: L.runs, text: pl, lv: L.lv });
+    if (L.k === "box") put({ k: "box", tone: L.tone, runs: L.runs, text: pl, lv: L.lv });
+    else if (L.k === "q") put({ k: "quote", runs: L.runs, text: pl, lv: L.lv });
+    else put({ k: "head", h: +L.k.charAt(1), runs: L.runs, text: pl, lv: L.lv });
   });
   return out;
 }
@@ -524,6 +561,8 @@ function _yzRtTextNode_(runs, base) {
   if (base.style) node.style = base.style;
   if (base.flex !== undefined) node.flex = base.flex;
   if (base.margin) node.margin = base.margin;
+  if (base.align === "c") node.align = "center"; else if (base.align === "r") node.align = "end";
+  if (_YZ_LSP) node.lineSpacing = _YZ_LSP;
   if (simple) { node.text = _yzRtRunsLin_(runs); return node.text ? node : null; }
   node.contents = runs.map(function (r) {
     var sp = { type: "span", text: r.fx ? _yzFxLinear_(r.t) || " " : r.t };
@@ -547,32 +586,69 @@ function _yzWrSize_(sz) {
 }
 function _yzWrW_(s) { var w = 0; Array.from(String(s || "")).forEach(function (c) { w += /[\u0000-\u024f]/.test(c) ? 0.56 : 1; }); return w; }
 function _yzWrPx_(sz) { var m = /^(\d+(?:\.\d+)?)px$/.exec(sz || ""); return m ? +m[1] : YZ_LINE_PX[sz] || 14; }
-var _YZ_WR_BS = "", YZ_WR_ROOM = { nano: 100, micro: 140, deca: 190, hecto: 210, kilo: 230, mega: 270, giga: 440 };
+var _YZ_LSP = "", YZ_LSP_PX = { "1": "1px", "1.15": "4px", "1.5": "10px", "2": "18px", "2.5": "26px" };
+var _YZ_WR_BS = "", YZ_WR_ROOM = { nano: 100, micro: 140, deca: 190, hecto: 210, kilo: 230, mega: 260, giga: 300 };
 function _yzWrFlex_(runs, base) {
-  var segs = [], cur = [];
-  (runs || []).forEach(function (r) { if (r.wr) { if (cur.length) segs.push({ runs: cur }); cur = []; segs.push({ wr: r }); } else cur.push(r); });
-  if (cur.length) segs.push({ runs: cur });
-  var size = base.size || "sm", color = base.color || "#1F1F1F", big = -1, bigN = 0;
-  segs.forEach(function (g, k) { if (g.runs) { var n = _yzRtRunsLin_(g.runs).replace(/\s/g, "").length; if (n > bigN) { bigN = n; big = k; } } });
-  var est = 0;
-  segs.forEach(function (g) { if (g.runs) est += _yzWrW_(_yzRtRunsLin_(g.runs)) * _yzWrPx_(size); else { var pp = _yzWrSplit_(g.wr.t); est += Math.max(_yzWrW_(pp[0]), _yzWrW_(pp[1])) * _yzWrPx_(_yzWrSize_(size)) + 8; } });
-  var fits = est <= (YZ_WR_ROOM[_YZ_WR_BS] || 270), kids = [];
-  segs.forEach(function (g, k) {
-    if (g.runs) {
-      var tn = _yzRtTextNode_(g.runs, Object.assign({}, base, { noWr: true, flex: !fits && k === big && bigN > 6 ? 1 : 0, margin: null }));
-      if (tn) { delete tn.margin; kids.push(tn); }
+  var size = base.size || "sm", color = base.color || "#1F1F1F", px = _yzWrPx_(size), room = (YZ_WR_ROOM[_YZ_WR_BS] || 260) * 0.95 - (base.cut || 0), al = base.align;
+  var lastW = -1; (runs || []).forEach(function (r, k) { if (r.wr) lastW = k; });
+  var rows = [], row = { items: [], w: 0 };
+  var newRow = function () { rows.push(row); row = { items: [], w: 0 }; };
+  var addRun = function (r, t) {
+    var last = row.items[row.items.length - 1], piece = _yzRtCopy_(r); piece.t = t;
+    if (last && last.runs) { var lr = last.runs[last.runs.length - 1]; if (lr._src === r && !r.fx && !r.cp) { lr.t += t; return; } piece._src = r; last.runs.push(piece); }
+    else { piece._src = r; row.items.push({ runs: [piece] }); }
+  };
+  (runs || []).forEach(function (r, k) {
+    if (r.wr) {
+      var o = _yzWrOpt_(r.wo), p = _yzWrSplit_(r.t, o.n), wpx = Math.max(10, Math.round(px * o.s / 100 * 1.2 * (r.z ? _yzWrPx_(_yzRtSzLine_(r.z, size)) / px : 1)));
+      var ww = Math.max.apply(null, p.map(_yzWrW_)) * wpx + 16;
+      if (row.w + ww > room && row.items.length) newRow();
+      row.items.push({ wr: r, o: o, p: p, px: wpx }); row.w += ww;
       return;
     }
-    var r = g.wr, p = _yzWrSplit_(r.t), ws = _yzWrSize_(r.z ? _yzRtSzLine_(r.z, size) : size), wc = r.c ? YZ_RT_COLORS[r.c] : color;
-    var line = function (t) { var o = { type: "text", text: t || " ", size: ws, color: wc, flex: 0, align: "start" }; if (r.b || base.weight === "bold") o.weight = "bold"; return o; };
-    kids.push({ type: "box", layout: "vertical", flex: 0, justifyContent: "center", spacing: "none", contents: [line(p[0]), line(p[1])] });
+    if (row.free) { addRun(r, r.t); return; }
+    if (r.fx || r.cp) {
+      var fw = _yzWrW_(r.fx ? _yzFxLinear_(r.t) : r.t) * px;
+      if (row.w + fw > room && row.items.length) { newRow(); if (k > lastW) row.free = true; }
+      addRun(r, r.t); row.w += fw;
+      return;
+    }
+    Array.from(String(r.t || "")).forEach(function (ch) {
+      if (row.free) { addRun(r, ch); return; }
+      var cw = (/[\u0000-\u024f]/.test(ch) ? 0.56 : 1) * px;
+      if (row.w + cw > room && row.items.length) { newRow(); if (k > lastW) row.free = true; if (ch === " ") return; }
+      addRun(r, ch); row.w += cw;
+    });
   });
-  if (!kids.length) return null;
-  if (fits) kids.push({ type: "filler", flex: 1 });
-  var box = { type: "box", layout: "horizontal", spacing: "sm", alignItems: "center", contents: kids };
-  if (base.flex !== undefined) box.flex = base.flex;
-  if (base.margin) box.margin = base.margin;
-  return box;
+  if (row.items.length) rows.push(row);
+  var SP_H = { 100: "none", 115: "none", 140: "xs", 170: "sm" }, SP_M = { 0: "none", 30: "sm", 60: "md", 100: "lg" }, AL = { j: "start", l: "start", c: "center", r: "end" };
+  var nodes = rows.map(function (rw) {
+    var hasW = rw.items.some(function (it) { return it.wr; });
+    var txt = function (rs, flex) { rs.forEach(function (x) { delete x._src; }); var b2 = Object.assign({}, base, { noWr: true, margin: null }); if (flex !== undefined) b2.flex = flex; else delete b2.flex; var tn = _yzRtTextNode_(rs, b2); if (tn) delete tn.margin; return tn; };
+    if (!hasW) return txt([].concat.apply([], rw.items.map(function (it) { return it.runs; })));
+    var kids = [], mg = "sm", lastT = -1, seenW = false;
+    rw.items.forEach(function (it, k) { if (it.wr) seenW = true; else if (seenW) lastT = k; });
+    var grow = lastT >= 0 && al !== "c" && al !== "r";
+    rw.items.forEach(function (it, k) {
+      if (it.runs) { var tn = txt(it.runs, grow && k === lastT ? 1 : 0); if (tn) kids.push(tn); return; }
+      var r = it.wr, wc = r.c ? YZ_RT_COLORS[r.c] : color;
+      mg = SP_M[it.o.m] || "sm";
+      kids.push({ type: "box", layout: "vertical", flex: 0, justifyContent: "center", spacing: SP_H[it.o.h] || "none", contents: it.p.map(function (t) {
+        var o = { type: "text", text: t || " ", size: it.px + "px", color: wc, flex: 0, align: AL[it.o.al] || "start" };
+        if (r.b || base.weight === "bold") o.weight = "bold";
+        if (r.i) o.style = "italic";
+        return o;
+      }) });
+    });
+    var bx = { type: "box", layout: "horizontal", spacing: mg, alignItems: "center", contents: kids };
+    if (al === "c") bx.justifyContent = "center"; else if (al === "r") bx.justifyContent = "flex-end"; else if (!grow) kids.push({ type: "filler", flex: 1 });
+    return bx;
+  }).filter(Boolean);
+  if (!nodes.length) return null;
+  var out = nodes.length === 1 ? nodes[0] : { type: "box", layout: "vertical", spacing: "none", contents: nodes };
+  if (base.flex !== undefined) out.flex = base.flex;
+  if (base.margin) out.margin = base.margin;
+  return out;
 }
 function _yzFxOnly_(runs) {
   var hit = null;
@@ -650,6 +726,11 @@ var YZ_BOX_ICW = { xxs: "15px", xs: "17px", sm: "19px", md: "22px", lg: "25px", 
 function _yzBlockInd_(b) { var n = Math.floor(Number(b && b.ind) || 0); return Math.max(0, Math.min(YZ_IND_MAX, n)); }
 
 function _yzTextLines_(text, o) {
+  var keep = _YZ_LSP;
+  _YZ_LSP = o && o.lsp && YZ_LSP_PX[o.lsp] ? YZ_LSP_PX[o.lsp] : "";
+  try { return _yzTextLines0_(text, o); } finally { _YZ_LSP = keep; }
+}
+function _yzTextLines0_(text, o) {
   o = o || {};
   if (o.bs) _YZ_WR_BS = o.bs;
   var size = o.size || "sm", color = o.color || "#1F1F1F", out = [], ls = _yzParseLines_(text, o.plain), i = 0, first = true;
@@ -687,7 +768,7 @@ function _yzTextLines_(text, o) {
     }
     if (L.k === "box") {
       var T = _yzRtTone_(L.tone), kids = [];
-      for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) { var bb = _yzRtBand_(ls[j].runs), bn = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(ls[j].runs, { size: size, color: T.ink, band: !!bb }), bb), ls[j].runs, size); if (bn) kids.push(bn); }
+      for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) { var bb = _yzRtBand_(ls[j].runs), bn = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(ls[j].runs, { size: size, color: T.ink, band: !!bb, align: ls[j].al, cut: pad + 22 + (T.icon ? 30 : 0) }), bb), ls[j].runs, size); if (bn) kids.push(bn); }
       if (kids.length === 1) out.push(_yzIndent_({
         type: "box", layout: "horizontal", spacing: "sm", backgroundColor: T.bg, borderColor: T.bd, borderWidth: "1px", cornerRadius: "8px", paddingAll: "9px",
         contents: (T.icon ? [{ type: "text", text: T.icon, size: size, flex: 0 }] : []).concat([{ type: "box", layout: "vertical", flex: 1, spacing: "xs", contents: kids }])
@@ -706,7 +787,7 @@ function _yzTextLines_(text, o) {
     }
     if (L.k === "quote") {
       var qk = [];
-      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) { var qb = _yzRtBand_(ls[j].runs), qn = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(ls[j].runs, { size: size, color: "#4A5565", band: !!qb }), qb), ls[j].runs, size); if (qn) qk.push(qn); }
+      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) { var qb = _yzRtBand_(ls[j].runs), qn = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(ls[j].runs, { size: size, color: "#4A5565", band: !!qb, align: ls[j].al, cut: pad + 16 }), qb), ls[j].runs, size); if (qn) qk.push(qn); }
       if (qk.length) out.push(_yzIndent_({ type: "box", layout: "horizontal", backgroundColor: "#B8C2CC", paddingStart: "3px", contents: [{ type: "box", layout: "vertical", backgroundColor: "#FFFFFF", paddingStart: "10px", spacing: "xs", contents: qk }] }, pad));
       i = j; first = false; continue;
     }
@@ -717,14 +798,14 @@ function _yzTextLines_(text, o) {
     }
     var band = _yzRtBand_(L.runs);
     if (L.k === "item") {
-      var body = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(L.runs, { size: size, color: color, flex: 1, band: !!band, weight: o.weight || "" }), band), L.runs, size);
+      var body = _yzCpWrap_(_yzMarkBand_(_yzRtTextNode_(L.runs, { size: size, color: color, flex: 1, band: !!band, weight: o.weight || "", align: L.al, cut: pad + _yzWrW_(L.mark) * _yzWrPx_(size) + 10 }), band), L.runs, size);
       if (body) { var irow = { type: "box", layout: "horizontal", spacing: "sm", contents: [{ type: "text", text: L.mark, size: size, color: o.markColor || "#4A5565", flex: 0 }, body] }; if (pad) irow.paddingStart = pad + "px"; out.push(irow); }
       i++; first = false; continue;
     }
     if (L.k === "head") {
       var H = YZ_RT_HEAD["h" + L.h];
-      node = _yzMarkBand_(_yzRtTextNode_(L.runs, { size: H.line, color: H.color, weight: "bold", margin: first ? undefined : (L.h <= 2 ? "xxl" : "xl"), band: !!band }), band);
-    } else node = _yzMarkBand_(_yzRtTextNode_(L.runs, { size: size, color: color, band: !!band, weight: o.weight || "" }), band);
+      node = _yzMarkBand_(_yzRtTextNode_(L.runs, { size: H.line, color: H.color, weight: "bold", margin: first ? undefined : (L.h <= 2 ? "xxl" : "xl"), band: !!band, align: L.al, cut: pad }), band);
+    } else node = _yzMarkBand_(_yzRtTextNode_(L.runs, { size: size, color: color, band: !!band, weight: o.weight || "", align: L.al, cut: pad }), band);
     node = _yzCpWrap_(node, L.runs, size);
     if (node) {
       out.push(_yzIndent_(node, pad));
@@ -2069,7 +2150,7 @@ function _yzLinkLines_(b) {
 
 function _yzBlockNodes_(b, act, bs, ctx) {
   ctx = ctx || {};
-  if (b.t === "text") return _yzTextLines_(b.v, { go: ctx.go, pics: b.pics, tbls: b.tbls, bs: bs, pact: ctx.pact ? function (id, tid, s) { return ctx.pact(b, id, tid, s); } : null });
+  if (b.t === "text") return _yzTextLines_(b.v, { lsp: b.lh, go: ctx.go, pics: b.pics, tbls: b.tbls, bs: bs, pact: ctx.pact ? function (id, tid, s) { return ctx.pact(b, id, tid, s); } : null });
   if (b.t === "ladder") return _yzLadderLines_(b, { bs: bs, act: act ? function (k) { return act(b, k); } : null });
   if (b.t === "table") { var x = _yzTable_(b, { bs: bs, pact: ctx.pact ? function (id) { return ctx.pact(b, id); } : null }); return x ? [x] : []; }
   if (b.t === "img") { var y = b.draw ? _yzDrawImage_(b, act ? act(b) : null) : _yzImage_(b, act ? act(b) : null); return y ? [y] : []; }
@@ -4603,13 +4684,23 @@ function fxEl(src) {
   return h("span", { class: "fx", role: "math", "aria-label": lin, title: lin, style: FXS.fx }, [fxNode(_yzFxParse_(src))]);
 }
 var WRS = {
-  w: "display:inline-flex;flex-direction:column;justify-content:center;vertical-align:middle;font-size:.64em;line-height:1.15;margin:0 .3em;letter-spacing:.08em;max-width:100%",
-  l: "display:block;white-space:nowrap;text-align:justify;text-align-last:justify"
+  w: "display:inline-flex;flex-direction:column;justify-content:center;vertical-align:middle;max-width:100%",
+  l: "display:block;white-space:nowrap"
 };
-function wrEl(text, hl) {
-  var p = _yzWrSplit_(text);
-  return h("span", { class: "rt-wr", style: WRS.w, role: "text", "aria-label": p[0] + p[1] }, [h("span", { class: "rt-wr1", style: WRS.l }, hlNodes(p[0], hl)), h("span", { class: "rt-wr2", style: WRS.l }, hlNodes(p[1] || "\u00a0", hl))]);
+var WR_AL = { j: "text-align:justify;text-align-last:justify", c: "text-align:center", l: "text-align:left", r: "text-align:right" };
+function wrEl(text, hl, wo) {
+  var o = _yzWrOpt_(wo), p = _yzWrSplit_(text, o.n);
+  var st = WRS.w + ";font-size:" + (o.s / 100) + "em;line-height:" + (o.h / 100) + ";letter-spacing:" + (o.k / 100) + "em;margin:0 " + (o.m / 100) + "em";
+  return h("span", { class: "rt-wr", style: st, role: "text", "aria-label": p.join(""), "data-n": String(p.length) }, p.map(function (t, k) { return h("span", { class: "rt-wr" + (k + 1), style: WRS.l + ";" + WR_AL[o.al] }, hlNodes(t || "\u00a0", hl)); }));
 }
+function alBox(el, al) {
+  if (!el || (al !== "c" && al !== "r")) return el;
+  el.style.marginLeft = "auto"; el.style.marginRight = al === "c" ? "auto" : "0";
+  return el;
+}
+var RT_AL = { c: "center", r: "right", j: "justify" };
+function alS(L) { return L && RT_AL[L.al] ? ";text-align:" + RT_AL[L.al] : ""; }
+var RT_LH = { "1": 1.35, "1.15": 1.55, "1.5": 2, "2": 2.7, "2.5": 3.3 };
 var CPS = {
   w: "display:inline-flex;align-items:center;flex-wrap:wrap;gap:.35em;max-width:100%;vertical-align:middle;margin:.12em .2em",
   t: "background:#EEF1F5;border:1px solid #C5CED8;border-radius:6px;padding:.1em .5em;color:#1F2937;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Noto Sans TC',monospace;font-size:.94em;line-height:1.5;overflow-wrap:anywhere;-webkit-user-select:all;user-select:all;font-weight:400;font-style:normal;text-decoration:none",
@@ -4651,7 +4742,7 @@ function rtKids1(runs, hl) {
   var out = [];
   (runs || []).forEach(function (r) {
     if (r.cp) { out.push(cpEl(r.t, hl)); return; }
-    var kids = r.fx ? [fxEl(r.t)] : r.wr ? [wrEl(r.t, hl)] : hlNodes(r.t, hl);
+    var kids = r.fx ? [fxEl(r.t)] : r.wr ? [wrEl(r.t, hl, r.wo)] : hlNodes(r.t, hl);
     if (!(r.b || r.i || r.u || r.s || r.c || r.z || r.m)) { out = out.concat(kids); return; }
     var mk = r.m && YZ_RT_MARKS[r.m];
     var cls = "rt" + (r.b ? " rt-b" : "") + (r.i ? " rt-i" : "") + (r.u ? " rt-u" : "") + (r.s ? " rt-s" : "") + (r.z && YZ_RT_SIZES[r.z] ? " rt-z" + r.z : "") + (mk ? " rt-m" : "");
@@ -4680,7 +4771,7 @@ function webText(v, hl, o) {
     }
     if (L.k === "tbl") {
       var TB = o.tbls && o.tbls[L.tbl];
-      if (TB) { var tw = webTable(TB, hl, { onImg: o.onImg, still: o.still }); tw.className += " rt-tbl"; if (L.lv) tw.style.marginLeft = (L.lv * 1.6) + "em"; tgt.appendChild(tw); }
+      if (TB) { var tw = webTable(TB, hl, { onImg: o.onImg, still: o.still }); tw.className += " rt-tbl"; if (L.lv) tw.style.marginLeft = (L.lv * 1.6) + "em"; alBox(tw.tagName === "TABLE" ? tw : tw.querySelector("table"), TB.al); tgt.appendChild(tw); }
       i++; continue;
     }
     if (L.k === "img") {
@@ -4696,28 +4787,28 @@ function webText(v, hl, o) {
           fe.style.marginLeft = "";
           tgt.appendChild(h("div", { class: "sdx rt-sdx " + (P.sm === "wrap" ? "sdwrap" : "sdcol") + " sd-" + P.sd, style: indM(L) + "--sdw:" + sw + "%" }, [fe, sub]));
           tgt = sub; sdEnd = sdj;
-        } else tgt.appendChild(fe);
+        } else { if (!(P.sd === "l" || P.sd === "r") && fe.className.indexOf("figsw") < 0) alBox(fe, P.al); tgt.appendChild(fe); }
       }
       i++; continue;
     }
     if (L.k === "box") {
       var T = _yzRtTone_(L.tone), lines = [];
-      for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) lines.push(h("div", { class: "rt-bl" }, rtKids(ls[j].runs, hl)));
+      for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) lines.push(h("div", { class: "rt-bl", style: alS(ls[j]).slice(1) || null }, rtKids(ls[j].runs, hl)));
       tgt.appendChild(h("div", { class: "rt-box" + (lines.length > 1 ? " rows" : "") + (T.icon ? "" : " noic"), "data-tone": L.tone, style: indM(L) + "background:" + T.bg + ";border-color:" + T.bd + ";color:" + T.ink + ";--bd:" + T.bd }, (T.icon ? [h("span", { class: "rt-ic" }, [T.icon])] : []).concat([h("div", { class: "rt-bb" }, lines)])));
       i = j; continue;
     }
     if (L.k === "quote") {
       var qs = [];
-      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) qs.push(h("div", { class: "rt-bl" }, rtKids(ls[j].runs, hl)));
+      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) qs.push(h("div", { class: "rt-bl", style: alS(ls[j]).slice(1) || null }, rtKids(ls[j].runs, hl)));
       tgt.appendChild(h("div", { class: "rt-quote", style: indM(L) }, qs));
       i = j; continue;
     }
     if (L.k === "head") {
       var H = YZ_RT_HEAD["h" + L.h];
-      tgt.appendChild(h("div", { class: "rt-h rt-h" + L.h, style: "font-size:" + H.em + "em;color:" + H.color + (L.lv ? ";padding-left:" + (L.lv * 1.6 / H.em).toFixed(2) + "em" : "") }, rtKids(L.runs, hl)));
+      tgt.appendChild(h("div", { class: "rt-h rt-h" + L.h, style: "font-size:" + H.em + "em;color:" + H.color + (L.lv ? ";padding-left:" + (L.lv * 1.6 / H.em).toFixed(2) + "em" : "") + alS(L) }, rtKids(L.runs, hl)));
     } else if (L.k === "item") {
-      tgt.appendChild(h("div", { class: "li", style: ind(L) }, [h("span", { class: "mkr" }, [L.mark]), h("span", {}, rtKids(L.runs, hl))]));
-    } else tgt.appendChild(h("div", { class: "txt", style: ind(L) }, rtKids(L.runs, hl)));
+      tgt.appendChild(h("div", { class: "li", style: ind(L) + (L.al ? ";justify-content:" + ({ c: "center", r: "flex-end", j: "flex-start" })[L.al] : "") }, [h("span", { class: "mkr" }, [L.mark]), h("span", { style: alS(L).slice(1) || null }, rtKids(L.runs, hl))]));
+    } else tgt.appendChild(h("div", { class: "txt", style: ind(L) + alS(L) }, rtKids(L.runs, hl)));
     i++;
   }
   return box;
@@ -5051,11 +5142,11 @@ function webArticle(ch, t, o) {
   (t.blocks || []).forEach(function (b, bIdx) {
     if (_yzOnlyHide_(b, "web")) { hidN++; sdP = null; return; }
     var el = null;
-    if (b.t === "text") el = webText(b.v, o.hl, { go: goFn, onTitle: o.onTitle, onChapter: o.onChapter, pics: b.pics, tbls: b.tbls, onImg: o.onImg, still: o.still });
+    if (b.t === "text") { el = webText(b.v, o.hl, { go: goFn, onTitle: o.onTitle, onChapter: o.onChapter, pics: b.pics, tbls: b.tbls, onImg: o.onImg, still: o.still }); if (RT_LH[b.lh]) el.style.lineHeight = RT_LH[b.lh]; }
     else if (b.t === "ladder") el = webLadder(b, o.hl, o);
-    else if (b.t === "table") el = webTable(b, o.hl, { onImg: o.onImg, still: o.still });
+    else if (b.t === "table") { el = webTable(b, o.hl, { onImg: o.onImg, still: o.still }); alBox(el.tagName === "TABLE" ? el : el.querySelector("table"), b.al); }
     else if (b.t === "img" && b.draw) el = webDraw(b, o);
-    else if (b.t === "img" && b.url) el = _yzImgGroup_(b) ? webFigs(b, o) : webFig(b, o);
+    else if (b.t === "img" && b.url) { el = _yzImgGroup_(b) ? webFigs(b, o) : webFig(b, o); if (!_yzImgGroup_(b) && !(b.sd === "l" || b.sd === "r")) alBox(el, b.al); }
     else if (b.t === "anim") el = webAnim(b, o);
     else if (b.t === "drug") el = webDrugs(b, o);
     else if (b.t === "link") el = webLinks(b, o.hl, { tid: t.id, bi: bIdx, pv: !!o.pv || !o.page, ph: o.emb === "ph", ly: o.ly || null });
@@ -9522,6 +9613,7 @@ function rteCopyLines(ls) {
   return ls.map(function (L) {
     var o = { k: L.k, lv: L.lv || 0, runs: (L.runs || []).map(_yzRtCopy_) };
     if (L.tone) o.tone = L.tone;
+    if (L.al) o.al = L.al;
     if (L.go !== undefined) o.go = L.go;
     if (L.img !== undefined) o.img = L.img;
     if (L.tbl !== undefined) o.tbl = L.tbl;
@@ -9548,9 +9640,9 @@ function rteCreate(o) {
       sp.setAttribute("contenteditable", "false"); sp.setAttribute("data-fx", r.t); sp.setAttribute("title", "公式（點一下修改）：" + r.t);
       sp.appendChild(fxEl(r.t));
     } else if (r.wr) {
-      sp.setAttribute("contenteditable", "false"); sp.setAttribute("data-wr", r.t); sp.setAttribute("title", "並列（上下兩行）：" + r.t + "\n點一下可以改字、改從哪裡分行，或拿掉");
+      sp.setAttribute("contenteditable", "false"); sp.setAttribute("data-wr", r.t); sp.setAttribute("data-wo", r.wo || ""); sp.setAttribute("title", "並列：" + r.t + "\n點一下可以改字、分幾行、從哪裡分、大小、間距，或拿掉");
       sp.classList.add("rt-wrc");
-      sp.appendChild(wrEl(r.t));
+      sp.appendChild(wrEl(r.t, null, r.wo));
     } else if (r.cp) {
       sp.setAttribute("contenteditable", "false"); sp.setAttribute("data-cp", r.t); sp.setAttribute("title", "反灰可複製（藥師按旁邊的「📋 複製」就複製好）：" + r.t + "\n點一下可以改字或拿掉");
       sp.appendChild(h("span", { class: "rt-cpt" }, [r.t])); sp.appendChild(h("span", { class: "rt-cpb", "aria-hidden": "true" }, ["📋"]));
@@ -9700,7 +9792,7 @@ function rteCreate(o) {
           pw.addEventListener("change", function () { var v = +pw.value; if (v >= 100) delete P.pw; else P.pw = v; if (o.onPics) o.onPics(); });
           side.appendChild(pw);
         }
-        if (!o.cell && o.imgUp) { side.appendChild(rlImgRow(P, L, d)); side.appendChild(rlImgSide(P, L, d)); }
+        if (!o.cell && o.imgUp) { side.appendChild(rlImgRow(P, L, d)); side.appendChild(rlImgSide(P, L, d)); side.appendChild(h("div", { class: "rl-imgal" }, [rteAlSel(P, "圖", function () { if (o.onPics) o.onPics(); })])); }
         d.appendChild(h("img", { class: "rl-imgsrc", src: P.url, alt: "" }));
         d.appendChild(side);
       }
@@ -9720,7 +9812,7 @@ function rteCreate(o) {
         var nr = (TB.rows || []).length, nc = 0; (TB.rows || []).forEach(function (r) { nc = Math.max(nc, (r || []).length); });
         d.appendChild(h("div", { class: "rl-tblpv" }, [typeof webTable === "function" ? webTable(TB, null) : h("span", {}, ["表格"])]));
         var eb = h("button", { class: "btn sm pri rl-tbled", type: "button", onclick: function () { if (o.tblEdit) o.tblEdit(L.tbl, function () { lines = readLines(); render(); }); } }, ["✏️ 編輯表格"]);
-        d.appendChild(h("div", { class: "rl-tblbar" }, [h("span", { class: "muted" }, ["▦ 表格　" + nc + " 欄 × " + nr + " 列（在這一塊文字裡）"]), eb]));
+        d.appendChild(h("div", { class: "rl-tblbar" }, [h("span", { class: "muted" }, ["▦ 表格　" + nc + " 欄 × " + nr + " 列（在這一塊文字裡）"]), eb, rteAlSel(TB, "表格", function () { if (o.onPics) o.onPics(); })]));
       }
       d.appendChild(h("button", { class: "rl-x", type: "button", title: "刪除這張表格", "aria-label": "刪除這張表格", onclick: function () { removeLine(d); } }, ["✕"]));
       return d;
@@ -9730,6 +9822,7 @@ function rteCreate(o) {
       d.setAttribute("data-tone", T.key); d.setAttribute("data-ic", T.icon);
       d.style.background = T.bg; d.style.borderColor = T.bd; d.style.color = T.ink;
     } else if (/^h[1-4]$/.test(L.k)) { var H = YZ_RT_HEAD[L.k]; d.style.fontSize = H.em + "em"; d.style.color = H.color; }
+    if (L.al && RT_AL[L.al]) { d.setAttribute("data-al", L.al); d.style.textAlign = RT_AL[L.al]; }
     if (!(L.runs || []).length) d.appendChild(h("br"));
     else _yzRtBoxGroups_(L.runs).forEach(function (g) {
       var css = g.x ? _yzRtBoxCss_(g.x, g.runs) : "";
@@ -9787,7 +9880,7 @@ function rteCreate(o) {
       if (n.hasAttribute("data-x") && _yzRtBox_(n.getAttribute("data-x"))) a.x = n.getAttribute("data-x");
       if (isFx(n)) { var fr = { t: _yzFxClean_(n.getAttribute("data-fx")), fx: 1 }; for (var k3 in a) fr[k3] = a[k3]; if (fr.t) runs.push(fr); return; }
       if (isCp(n)) { var cr = { t: _yzCpClean_(n.getAttribute("data-cp")), cp: 1 }; for (var k4 in a) cr[k4] = a[k4]; if (cr.t) runs.push(cr); return; }
-      if (isWr(n)) { var wr = { t: _yzWrClean_(n.getAttribute("data-wr")), wr: 1 }; for (var k5 in a) wr[k5] = a[k5]; if (wr.t) runs.push(wr); return; }
+      if (isWr(n)) { var wr = { t: _yzWrClean_(n.getAttribute("data-wr")), wr: 1 }, wo5 = _yzWrOptStr_(n.getAttribute("data-wo") || ""); for (var k5 in a) wr[k5] = a[k5]; if (wo5) wr.wo = wo5; if (wr.t) runs.push(wr); return; }
       for (var c = n.firstChild; c; c = c.nextSibling) walk(c, a);
     })(root, {});
     return _yzRtMerge_(runs);
@@ -9805,6 +9898,7 @@ function rteCreate(o) {
       if (k === "img") { L.img = n.getAttribute("data-img") || ""; out.push(L); return; }
       if (k === "tbl") { L.tbl = n.getAttribute("data-tbl") || ""; out.push(L); return; }
       if (k === "box") L.tone = _yzRtToneOk_(n.getAttribute("data-tone")) ? _yzRtTone_(n.getAttribute("data-tone")).key : "info";
+      if (/^[crj]$/.test(n.getAttribute("data-al") || "")) L.al = n.getAttribute("data-al");
       L.runs = runsOf(n);
       out.push(L);
     });
@@ -9994,6 +10088,7 @@ function rteCreate(o) {
     }
     if ((L.k === "box" || L.k === "q") && !plain.trim()) { L.k = "p"; delete L.tone; return caret(li, 0); }
     var nk = /^h[1-4]$/.test(L.k) && !tail.length ? "p" : L.k, nl = { k: nk, lv: L.lv || 0, runs: tail };
+    if (L.al) nl.al = L.al;
     if (nk === "box") nl.tone = L.tone;
     if (L.k === "p" && _yzRtItem_(rteTxt(tail))) nl.__from = L;
     L.runs = head;
@@ -10125,6 +10220,14 @@ function rteCreate(o) {
       return caret(at + 1, 0);
     });
   }
+  function cmdAlign(v) {
+    run(function (ls, s) {
+      var r = lineSpan(s), all = true, li;
+      for (li = r.from; li <= r.to; li++) if (ls[li] && !rteIsBlock(ls[li]) && (ls[li].al || "l") !== v) all = false;
+      for (li = r.from; li <= r.to; li++) if (ls[li] && !rteIsBlock(ls[li])) { if (v === "l" || (all && v !== "l")) delete ls[li].al; else ls[li].al = v; }
+      return s;
+    });
+  }
   function cmdIndent(d) {
     run(function (ls, s) {
       var r = lineSpan(s);
@@ -10244,8 +10347,8 @@ function rteCreate(o) {
     }
     rteCpDialog(init, !!at, function (v) { cpPut(v, at, s); }, at ? function () { cpPut("", at, s); } : null);
   }
-  function wrPut(text, at, sel) {
-    text = _yzWrClean_(text);
+  function wrPut(text, at, sel, wo) {
+    text = _yzWrClean_(text); wo = _yzWrOptStr_(wo || "");
     if (sel) { focusBody(); try { setSel(sel.a, sel.b); } catch (e) {  } lastSel = sel; }
     var lost = false;
     run(function (ls, s) {
@@ -10253,7 +10356,7 @@ function rteCreate(o) {
         var L = ls[at.li], len = L && !rteIsBlock(L) ? rteLen(L) : 0, old = len ? _yzRtSlice_(L.runs, at.o, at.o + at.n) : [];
         if (old.length !== 1 || !old[0].wr || old[0].t !== at.src) { lost = true; return s; }
         var nr = _yzRtCopy_(old[0]);
-        if (text) nr.t = text; else { delete nr.wr; nr.t = _yzWrPlain_(at.src); }
+        if (text) { nr.t = text; if (wo) nr.wo = wo; else delete nr.wo; } else { delete nr.wr; delete nr.wo; nr.t = _yzWrPlain_(at.src); }
         L.runs = _yzRtMerge_(_yzRtSlice_(L.runs, 0, at.o).concat([nr], _yzRtSlice_(L.runs, at.o + at.n, len)));
         return caret(at.li, at.o + nr.t.length);
       }
@@ -10262,7 +10365,7 @@ function rteCreate(o) {
       var pos = deleteSel(ls, s), L2 = ls[pos.li];
       if (rteIsBlock(L2)) { ls.splice(pos.li + 1, 0, rteNewLine()); pos = { li: pos.li + 1, o: 0 }; L2 = ls[pos.li]; }
       var len2 = rteLen(L2), pv = pos.o > 0 ? _yzRtSlice_(L2.runs, pos.o - 1, pos.o)[0] : null, r = pv ? _yzRtCopy_(pv) : {};
-      delete r.fx; delete r.cp; delete r.wr; r.t = text; r.wr = 1;
+      delete r.fx; delete r.cp; delete r.wr; delete r.wo; r.t = text; r.wr = 1; if (wo) r.wo = wo;
       L2.runs = _yzRtMerge_(_yzRtSlice_(L2.runs, 0, pos.o).concat([r], _yzRtSlice_(L2.runs, pos.o, len2)));
       return caret(pos.li, pos.o + text.length);
     });
@@ -10271,17 +10374,17 @@ function rteCreate(o) {
   }
   function cmdWr(chip) {
     if (rawMode) return;
-    var at = null, init = "", s = null, ls = readLines();
+    var at = null, init = "", initO = "", s = null, ls = readLines();
     if (chip && body.contains(chip)) {
       var w0 = domPos(chip.parentNode, Array.prototype.indexOf.call(chip.parentNode.childNodes, chip));
       if (!w0) return;
-      init = chip.getAttribute("data-wr") || "";
+      init = chip.getAttribute("data-wr") || ""; initO = chip.getAttribute("data-wo") || "";
       at = { li: w0.li, o: w0.o, n: init.length, src: init };
     } else {
       s = getSel() || lastSel;
       if (s && !isCollapsed(s) && s.a.li === s.b.li && ls[s.a.li] && !rteIsBlock(ls[s.a.li])) {
         var pc = _yzRtSlice_(ls[s.a.li].runs, s.a.o, s.b.o);
-        if (pc.length === 1 && pc[0].wr) { init = pc[0].t; at = { li: s.a.li, o: s.a.o, n: init.length, src: init }; }
+        if (pc.length === 1 && pc[0].wr) { init = pc[0].t; initO = pc[0].wo || ""; at = { li: s.a.li, o: s.a.o, n: init.length, src: init }; }
         else {
           var txt = _yzWrClean_(pc.map(function (r) { return r.wr ? _yzWrPlain_(r.t) : r.t; }).join("").replace(/\s+/g, " "));
           if (txt && !pc.some(function (r) { return r.fx || r.cp; })) { if (wrPut(txt, null, s)) toast("⫴ 好了：分成上下兩行（自動對半）。點一下那一段可以自己決定從哪裡分行"); return; }
@@ -10289,7 +10392,7 @@ function rteCreate(o) {
         }
       } else if (s && !isCollapsed(s) && s.a.li !== s.b.li) { toast("一次一行：請只選一行裡的字"); return; }
     }
-    rteWrDialog(init, !!at, function (v) { wrPut(v, at, s); }, at ? function () { wrPut("", at, s); } : null);
+    rteWrDialog(init, !!at, function (v, wo) { wrPut(v, at, s, wo); }, at ? function () { wrPut("", at, s); } : null, initO);
   }
   function cmdDate() {
     if (rawMode || typeof dtDialog !== "function") return;
@@ -10338,7 +10441,7 @@ function rteCreate(o) {
     var ls = readLines(), s = getSel() || lastSel, st = { ok: !!s, kind: null, tone: null, list: null, b: 0, i: 0, u: 0, s: 0, c: null, z: null, m: null, cp: 0, x: null };
     if (!s) return st;
     var first = ls[Math.min(s.a.li, ls.length - 1)];
-    if (first) { st.kind = first.k; st.tone = first.tone || null; var it = rteIsBlock(first) || first.k !== "p" ? null : _yzRtItem_(rteTxt(first.runs)); st.list = it ? rteMarkClass(it.mark) : null; }
+    if (first) { st.al = first.al || "l"; st.kind = first.k; st.tone = first.tone || null; var it = rteIsBlock(first) || first.k !== "p" ? null : _yzRtItem_(rteTxt(first.runs)); st.list = it ? rteMarkClass(it.mark) : null; }
     var pieces = [], li;
     if (isCollapsed(s)) {
       var Lc = ls[Math.min(s.a.li, ls.length - 1)];
@@ -10564,7 +10667,7 @@ function rteCreate(o) {
   inst.lite = !!o.lite;
   inst.cell = !!o.cell;
   inst.owns = function (n) { return !!n && el.contains(n); };
-  inst.cmd = { inline: cmdInline, frame: cmdFrame, size: cmdSize, clear: cmdClear, kind: cmdKind, list: cmdList, box: cmdBox, line: cmdInsertLine, indent: cmdIndent, text: cmdText, undo: undo, redo: redo, raw: function () { setRaw(!rawMode); }, img: cmdImg, mark: cmdMark, fx: function () { cmdFx(null); }, cp: function () { cmdCp(null); }, wr: function () { cmdWr(null); }, copy: cmdCopy, paste: cmdPaste, date: cmdDate, own: pasteOwn };
+  inst.cmd = { inline: cmdInline, align: cmdAlign, frame: cmdFrame, size: cmdSize, clear: cmdClear, kind: cmdKind, list: cmdList, box: cmdBox, line: cmdInsertLine, indent: cmdIndent, text: cmdText, undo: undo, redo: redo, raw: function () { setRaw(!rawMode); }, img: cmdImg, mark: cmdMark, fx: function () { cmdFx(null); }, cp: function () { cmdCp(null); }, wr: function () { cmdWr(null); }, copy: cmdCopy, paste: cmdPaste, date: cmdDate, own: pasteOwn };
   inst.refresh = function () { lines = readLines(); render(); };
   inst.state = state; inst.value = function () { return rawMode ? rawTa.value.replace(/\n+$/, "") : value(); }; inst.isRaw = function () { return rawMode; };
   inst.splitAtCaret = function () { if (rawMode) setRaw(false); return splitAtCaret(); };
@@ -10586,36 +10689,62 @@ var RTE_FX_KEYS = [
 ];
 var RTE_FX_SYM = ["×", "÷", "±", "≤", "≥", "≈", "≠", "→", "·", "°", "µ", "Δ"];
 var RTE_FX_EX = [["分數", "1/6"], ["每平方公尺", "mg/m^2"], ["下標", "C_max"], ["CrCl", "((140-年齡)×體重)/(72×Scr)"], ["BSA", "√((身高×體重)/3600)"]];
-function rteWrDialog(init, editing, onDone, onRemove) {
-  var bx = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "並列" }), shut = false;
+function rteAlSel(obj, what, onCh) {
+  var ok = typeof bk69 === "function" ? bk69() : true;
+  var sel = h("select", { class: "in sm rl-al", "aria-label": what + "靠哪裡", title: ok ? what + "靠哪裡（比整行窄的時候才看得出來）" : "Apps Script 的 02 換成第 69 批以後才存得住" }, [["", "靠左"], ["c", "置中"], ["r", "靠右"]].map(function (x) { var op = h("option", { value: x[0] }, [what + "：" + x[1]]); if ((obj.al || "") === x[0]) op.selected = true; return op; }));
+  if (!ok && !obj.al) sel.disabled = true;
+  ["keydown", "mousedown", "click"].forEach(function (ev) { sel.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+  sel.addEventListener("change", function () { if (sel.value) obj.al = sel.value; else delete obj.al; if (onCh) onCh(); });
+  return sel;
+}
+function rteWrDialog(init, editing, onDone, onRemove, initO) {
+  var bx = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "並列" }), shut = false, O = _yzWrOpt_(initO || "");
   var close = function () { if (shut) return; shut = true; bx.remove(); };
   var inp = h("input", { class: "in wrin", type: "text", maxlength: String(YZ_WR_MAX), placeholder: "例：例假者照休、但廚房人｜員及寺務組全體應出勤", "aria-label": "並列的字", autocomplete: "off" });
   inp.value = init || "";
   var pv = h("div", { class: "cppv wrpv", "aria-live": "polite" });
+  var cur = function () { return _yzWrOptStr_(O); };
   var okB = btn(editing ? "改好了" : "放進去", function () {
     var v = _yzWrClean_(inp.value);
     if (!v) { toast("先打要並列的字"); inp.focus(); return; }
-    close(); onDone(v);
+    close(); onDone(v, cur());
   }, "sm pri wrok");
+  var nBars = function () { return (_yzWrClean_(inp.value).match(/｜/g) || []).length; };
   function paint() {
-    var v = _yzWrClean_(inp.value);
+    var v = _yzWrClean_(inp.value), nb = nBars();
     pv.innerHTML = ""; okB.disabled = !v;
+    selN.disabled = nb > 0; selN.title = nb > 0 ? "有打「｜」：照你分（" + Math.min(YZ_WR_LINES, nb + 1) + " 行）" : "";
     if (!v) { pv.appendChild(h("span", { class: "muted" }, ["在上面打字，這裡就是看到的樣子"])); return; }
-    pv.appendChild(h("span", { style: "font-size:1.4em" }, ["前面的字", wrEl(v), "後面的字"]));
+    pv.appendChild(h("span", { style: "font-size:1.4em" }, ["前面的字", wrEl(v, null, cur()), "後面的字"]));
   }
+  var mk = function (cls, label, list, key) {
+    var sel = h("select", { class: "in sm " + cls, "aria-label": label }, list.map(function (x) { var op = h("option", { value: String(x[0]) }, [x[1]]); if (String(O[key]) === String(x[0])) op.selected = true; return op; }));
+    sel.addEventListener("change", function () { O[key] = key === "al" ? sel.value : +sel.value; paint(); });
+    return h("label", { class: "wrop" }, [h("span", { class: "muted" }, [label]), sel]);
+  };
+  var lN = mk("wr-n", "自動分幾行", [[2, "2 行"], [3, "3 行"], [4, "4 行"]], "n"), selN = lN.querySelector("select");
+  var opts = h("div", { class: "wrbar wropts" }, [
+    lN,
+    mk("wr-al", "每一行", [["j", "左右撐滿"], ["c", "置中"], ["l", "靠左"], ["r", "靠右"]], "al"),
+    mk("wr-s", "大小", [[50, "小"], [64, "一般"], [80, "大"], [100, "跟旁邊一樣"]], "s"),
+    mk("wr-h", "上下行的距離", [[100, "緊"], [115, "一般"], [140, "鬆"], [170, "很鬆"]], "h"),
+    mk("wr-k", "字跟字", [[0, "緊"], [8, "一般"], [15, "鬆"], [25, "很鬆"]], "k"),
+    mk("wr-m", "跟旁邊的字", [[0, "貼著"], [30, "一般"], [60, "遠一點"], [100, "很遠"]], "m")
+  ]);
   var mid = btn("在游標的地方分行（放「｜」）", function () {
-    var v = inp.value.replace(/[|｜]/g, ""), at = Math.min(inp.selectionStart === null ? v.length : inp.selectionStart, v.length);
+    var v = inp.value.replace(/\|/g, "｜"), at = Math.min(inp.selectionStart === null ? v.length : inp.selectionStart, v.length);
+    if (nBars() >= YZ_WR_LINES - 1) { toast("最多 " + YZ_WR_LINES + " 行（3 個「｜」）"); return; }
     inp.value = v.slice(0, at) + "｜" + v.slice(at); paint(); inp.focus(); try { inp.setSelectionRange(at + 1, at + 1); } catch (e) {  }
   }, "sm wrmid");
-  var auto = btn("自動對半（拿掉「｜」）", function () { inp.value = inp.value.replace(/[|｜]/g, ""); paint(); inp.focus(); }, "sm wrauto");
+  var auto = btn("自動分（拿掉「｜」）", function () { inp.value = inp.value.replace(/[|｜]/g, ""); paint(); inp.focus(); }, "sm wrauto");
   var btns = [];
   if (onRemove) btns.push(btn("拿掉（變回一般的字）", function () { close(); onRemove(); }, "sm bad wrdel"));
   btns.push(h("span", { class: "fxsp" }), btn("取消", close, "sm"), okB);
   bx.appendChild(h("div", { class: "dlg cpdlg wrdlg" }, [
-    h("h3", {}, [editing ? "⫴ 改並列" : "⫴ 並列（上下兩行）"]),
-    h("p", { class: "dlg-p" }, ["一段字縮小、分成上下兩行，夾在同一行裡（像公文的雙行夾注）。網頁、LINE、Word 都是上下兩行。"]),
-    inp, h("div", { class: "wrbar" }, [mid, auto]), pv,
-    h("div", { class: "hint" }, ["打「｜」（或半形 |）＝從那裡換到下面那一行；沒有打＝自動對半（上面多一個字）。一段最多 " + YZ_WR_MAX + " 個字。"]),
+    h("h3", {}, [editing ? "⫴ 改並列" : "⫴ 並列"]),
+    h("p", { class: "dlg-p" }, ["一段字縮小、分成 2～4 行，夾在同一行裡（像公文的雙行夾注）。網頁、LINE、Word 都照著排。"]),
+    inp, h("div", { class: "wrbar" }, [mid, auto]), opts, pv,
+    h("div", { class: "hint" }, ["打「｜」（或半形 |）＝從那裡換到下一行（最多 3 個＝4 行）；沒有打＝自動平均分成你選的行數。一段最多 " + YZ_WR_MAX + " 個字。"]),
     h("div", { class: "dlg-b" }, btns)
   ]));
   inp.addEventListener("input", paint);
@@ -10751,7 +10880,11 @@ var RTE_BAR = [
     { id: "go", h: "🔗 連結（標題／整章）", tip: "在這一行後面放一個連結，連到手冊裡另一個標題或整章（LINE 上是一個可以點的按鈕列；對方那一頁也會自動連回來）", a: ["line", "go"] },
     { id: "img", h: "🖼 圖片", tip: "在這一行後面放一張圖（跟文字放在同一塊；縮排跟這一行一樣，⇤ ⇥ 可以調）。也可以把圖拖進來，或複製後按 Ctrl+V 貼上", a: ["img"] },
     { id: "indent", h: "⇥", tip: "縮排（Tab）", a: ["indent", 1] },
-    { id: "outdent", h: "⇤", tip: "取消縮排（Shift+Tab）", a: ["indent", -1] }
+    { id: "outdent", h: "⇤", tip: "取消縮排（Shift+Tab）", a: ["indent", -1] },
+    { id: "al-l", h: "靠左", tip: "靠左（一般）：游標那一行（或選起來的那幾行）", a: ["align", "l"] },
+    { id: "al-c", h: "置中", tip: "置中：游標那一行（或選起來的那幾行）。再按一次＝回到靠左", a: ["align", "c"] },
+    { id: "al-r", h: "靠右", tip: "靠右：游標那一行（或選起來的那幾行）。再按一次＝回到靠左", a: ["align", "r"] },
+    { id: "al-j", h: "左右對齊", tip: "左右對齊（字平均排開到兩邊；最後一行照常）：游標那一行（或選起來的那幾行）", a: ["align", "j"] }
   ] },
   { g: "其他", items: [
     { id: "copy", h: "📋 複製", tip: "複製選起來的字（格式、文字裡的圖、表格都帶著）：到別的地方（別的標題也可以）點一下，按「📌 貼上」", a: ["copy"] },
@@ -10773,7 +10906,7 @@ function rteDo(a, arg2, arg3) {
 }
 function rteExec(a) {
   var name = a[0];
-  if (name === "inline" || name === "kind" || name === "list" || name === "line" || name === "indent") rteDo(name, a[1], a[2]);
+  if (name === "inline" || name === "kind" || name === "list" || name === "line" || name === "indent" || name === "align") rteDo(name, a[1], a[2]);
   else rteDo(name);
 }
 function rteOpenPop(anchor, kind) {
@@ -10936,6 +11069,7 @@ function rteBarSync() {
       else if (id === "frame") on = !!st.x;
       else if (id === "cp") on = !!st.cp;
       else if (id === "wr") on = !!st.wr;
+      else if (id.indexOf("al-") === 0) on = st.al === id.slice(3);
     }
     if (c && c.lite && (id === "img" || id === "go" || id === "cp")) { dis = true; on = false; }
     if (c && c.cell && id === "go") { dis = true; on = false; }
@@ -12833,9 +12967,13 @@ function blockEditor(t, b, i) {
       imgUp: function (file, cb, swap, quiet) { if (!swap && _yzImgIds_(b.v).length >= ED_TEXT_PICS_MAX) { toast("一塊文字最多放 " + ED_TEXT_PICS_MAX + " 張圖：請放到下一塊"); cb(null); return; } edImgUp(file, cb, quiet); },
       onTablePaste: tb52Ok() ? function (x) { if (x.html) twPasteText(rte, x, t, b); else if (x.text) rte.cmd.text(x.text, "plain"); } : null });
     body.appendChild(rte.el);
+    var lhOk = bk69(), lhSel = h("select", { class: "in sm ed-lh", "aria-label": "整段的行距", title: lhOk ? "這一塊文字每一行之間的距離（網頁、LINE、Word 都照著排）" : "Apps Script 的 02 換成第 69 批以後才存得住" }, [["", "一般"], ["1", "1.0"], ["1.15", "1.15"], ["1.5", "1.5"], ["2", "2.0"], ["2.5", "2.5"]].map(function (x) { var op = h("option", { value: x[0] }, ["行距：" + x[1]]); if (String(b.lh || "") === x[0]) op.selected = true; return op; }));
+    if (!lhOk && !b.lh) lhSel.disabled = true;
+    lhSel.onchange = function () { if (lhSel.value) b.lh = lhSel.value; else delete b.lh; changed(); refreshPreview(); };
+    body.appendChild(h("div", { class: "ed-lhrow" }, [lhSel]));
     body.appendChild(hint("選取文字 → 按最上面第二排的按鍵（粗體、顏色、大小）。整行的變化（標題、項目符號、編號、標註、分隔線…）：游標放在那一行，按對應的鍵，再按一次就取消。Enter 換行，清單會自動接下一個符號；Ctrl+Z 復原。圖片可以直接放在文字裡：游標放在那一行，按「🖼 圖片」（或把圖拖進來、Ctrl+V 貼上），圖會放在那一行下面、跟那一行一樣縮排。要做像法條那樣一層一層的編號，請用「＋階梯式內容」。"));
   } else if (b.t === "ladder") body.appendChild(ladderEditor(t, b));
-  else if (b.t === "table") body.appendChild(tableEditor(b, t));
+  else if (b.t === "table") { body.appendChild(h("div", { class: "ed-al" }, [rteAlSel(b, "表格", function () { changed(); })])); body.appendChild(tableEditor(b, t)); }
   else if (b.t === "anim") body.appendChild(animEditor(t, b));
   else if (b.t === "drug") body.appendChild(drugEditor(t, b));
   else if (b.t === "link") body.appendChild(linkEditor(b));
@@ -12861,6 +12999,7 @@ function blockEditor(t, b, i) {
     body.appendChild(cap);
     body.appendChild(edImgRow(t, b, i));
     body.appendChild(edImgSide(t, b, i));
+    if (!b.draw) body.appendChild(h("div", { class: "ed-al" }, [rteAlSel(b, "圖", function () { changed(); })]));
     body.appendChild(edPicTwo(b));
     body.appendChild(ocrLine(b));
     if (b.url && b.fid) body.appendChild(h("div", { class: "drw-conv" }, [btn("✏️ 在照片上畫備註", function () { edToDraw(b, function () { renderForm(); changed(); }); }, "sm"), h("span", { class: "muted" }, ["變成「繪圖」：在這張照片上畫圈、箭頭、寫字（照片本身不會被改；存檔時另外存一張畫好的）"])]));
@@ -12875,6 +13014,7 @@ function blockEditor(t, b, i) {
 var ED_IMG_G_MAX = 11;
 function bk64() { return backAtLeast(12, 27); }
 function bk66() { return backAtLeast(12, 28); }
+function bk69() { return backAtLeast(12, 31); }
 function edImgPromote(b) {
   var p = b.g.shift();
   b.url = p.url; b.fid = p.fid || ""; b.fname = p.fname || ""; b.info = p.info || null; b.ar = p.ar || b.ar; b.cap = p.cap || "";
@@ -19416,6 +19556,7 @@ function exRuns(runs, base) {
   });
   return out;
 }
+var EX_JC = { c: "center", r: "right", j: "both" };
 function exP(inner, o) {
   o = o || {};
   var pr = "";
@@ -19423,7 +19564,7 @@ function exP(inner, o) {
   if (o.keep) pr += "<w:keepNext/>";
   if (o.bdr) pr += "<w:pBdr>" + o.bdr + "</w:pBdr>";
   if (o.shd) pr += '<w:shd w:val="clear" w:color="auto" w:fill="' + o.shd + '"/>';
-  if (o.before !== undefined || o.after !== undefined) pr += "<w:spacing" + (o.before !== undefined ? ' w:before="' + o.before + '"' : "") + (o.after !== undefined ? ' w:after="' + o.after + '"' : "") + "/>";
+  if (o.before !== undefined || o.after !== undefined || o.line) pr += "<w:spacing" + (o.before !== undefined ? ' w:before="' + o.before + '"' : "") + (o.after !== undefined ? ' w:after="' + o.after + '"' : "") + (o.line ? ' w:line="' + o.line + '" w:lineRule="auto"' : "") + "/>";
   if (o.ind || o.hang) pr += '<w:ind w:left="' + Math.round((o.ind || 0) + (o.hang || 0)) + '"' + (o.hang ? ' w:hanging="' + Math.round(o.hang) + '"' : "") + "/>";
   if (o.jc) pr += '<w:jc w:val="' + o.jc + '"/>';
   return "<w:p>" + (pr ? "<w:pPr>" + pr + "</w:pPr>" : "") + (inner || "") + "</w:p>";
@@ -19454,9 +19595,9 @@ function exCell(tb, v, bold, cw, F) {
       if (cap) xml += exP(exR(cap, { color: "6B7280", sz: 18 }), { after: 0 });
       return;
     }
-    if (L.k === "item") { xml += exP(exR(L.mark + " ", base) + exRuns(L.runs, base), { after: 0, ind: (L.lv || 0) * EX_IND }); return; }
-    if (L.k === "head") { var H = YZ_RT_HEAD["h" + L.h]; xml += exP(exRuns(L.runs, { b: 1, color: exHex(H.color) }), { after: 0 }); return; }
-    xml += exP(exRuns(L.runs || [], base), { after: 0, ind: (L.lv || 0) * EX_IND });
+    if (L.k === "item") { xml += exP(exR(L.mark + " ", base) + exRuns(L.runs, base), { after: 0, ind: (L.lv || 0) * EX_IND, jc: EX_JC[L.al] }); return; }
+    if (L.k === "head") { var H = YZ_RT_HEAD["h" + L.h]; xml += exP(exRuns(L.runs, { b: 1, color: exHex(H.color) }), { after: 0, jc: EX_JC[L.al] }); return; }
+    xml += exP(exRuns(L.runs || [], base), { after: 0, ind: (L.lv || 0) * EX_IND, jc: EX_JC[L.al] });
   });
   return xml;
 }
@@ -19467,7 +19608,7 @@ function exTable(tb, ind, kv, F) {
   if (w) w.forEach(function (x) { sum += +x || 0; });
   for (j = 0; j < G.nc; j++) { cols.push(Math.max(300, Math.floor(w && sum ? W * (+w[j] || 0) / sum : W / G.nc))); tot += cols[j]; }
   var head = !kv && tb.head !== false, bd = "A3A9B3";
-  var out = '<w:tbl><w:tblPr><w:tblW w:w="' + tot + '" w:type="dxa"/>' + (ind ? '<w:tblInd w:w="' + ind + '" w:type="dxa"/>' : "") +
+  var out = '<w:tbl><w:tblPr><w:tblW w:w="' + tot + '" w:type="dxa"/>' + (tb && (tb.al === "c" || tb.al === "r") ? '<w:jc w:val="' + (tb.al === "c" ? "center" : "right") + '"/>' : "") + (ind ? '<w:tblInd w:w="' + ind + '" w:type="dxa"/>' : "") +
     "<w:tblBorders>" + ["top", "left", "bottom", "right", "insideH", "insideV"].map(function (s) { return "<w:" + s + ' w:val="single" w:sz="4" w:space="0" w:color="' + bd + '"/>'; }).join("") + "</w:tblBorders>" +
     '<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' +
     cols.map(function (x) { return '<w:gridCol w:w="' + x + '"/>'; }).join("") + "</w:tblGrid>";
@@ -19536,15 +19677,16 @@ function exPicFrag(F, p, ind) {
   if (P) {
     var sc = Math.min(1, (EX_EMU_W - (ind || 0) * 635) / (P.w * 9525), EX_EMU_H / (P.h * 9525));
     var cx = Math.max(9525, Math.round(P.w * 9525 * sc)), cy = Math.max(9525, Math.round(P.h * 9525 * sc));
-    exPut(F, exP(exPic(k, cx, cy, cap || "手冊的圖"), { ind: ind, keep: !!(cap || o), after: cap ? 40 : 100 }));
+    exPut(F, exP(exPic(k, cx, cy, cap || "手冊的圖"), { ind: ind, keep: !!(cap || o), after: cap ? 40 : 100, jc: EX_JC[p && p.al] }));
     F.pics.push(k);
   } else exPut(F, exP(exR("［圖片" + (cap ? "：" + cap : "") + (EXP.noPics ? "" : "（這張圖這次沒有放進來）") + "］", { color: "6B7280" }), { ind: ind }));
   if (cap) exPut(F, exP(exR(cap), { style: "Caption", ind: ind }));
   if (o) exPut(F, exP(exR(dr ? "✏️ 繪圖裡的字：\n" : "🔍 圖片裡的字：", { b: 1 }) + exR(o), { style: "HbSmall", ind: ind }));
 }
 function exTextUnits(out, tname, b, hb, cid, bi, tl) {
-  var ls = _yzParseLines_(b.v), i = 0, j;
+  var ls = _yzParseLines_(b.v), i = 0, j, LN = { "1": 240, "1.15": 276, "1.5": 360, "2": 480, "2.5": 600 }[b.lh] || 0;
   function base(L) { return bi + (L.lv || 0) * EX_IND; }
+  function po(L, o) { o.jc = EX_JC[L.al]; if (LN) o.line = LN; return o; }
   function add(xml, pics) { var F = exFrag(tname, true); F.xml = xml; if (pics) F.pics = pics; out.push(F); return F; }
   while (i < ls.length) {
     var L = ls[i];
@@ -19560,20 +19702,20 @@ function exTextUnits(out, tname, b, hb, cid, bi, tl) {
     if (L.k === "box") {
       var T = _yzRtTone_(L.tone), xml = "";
       for (j = i; j < ls.length && ls[j].k === "box" && ls[j].tone === L.tone && (ls[j].lv || 0) === (L.lv || 0); j++) {
-        xml += exP((j === i ? exR((T.icon ? T.icon + " " : "") + T.label + "：", { b: 1 }) : "") + exRuns(ls[j].runs, { color: exHex(T.ink) }), { shd: exHex(T.bg), bdr: exBdr(["left"], exHex(T.bd), 18), ind: base(L), after: 0 });
+        xml += exP((j === i ? exR((T.icon ? T.icon + " " : "") + T.label + "：", { b: 1 }) : "") + exRuns(ls[j].runs, { color: exHex(T.ink) }), po(ls[j], { shd: exHex(T.bg), bdr: exBdr(["left"], exHex(T.bd), 18), ind: base(L), after: 0 }));
       }
       add(xml + exP("", { after: 0 }));
       i = j; continue;
     }
     if (L.k === "quote") {
       var q = "";
-      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) q += exP(exRuns(ls[j].runs, { color: "4B5563" }), { bdr: exBdr(["left"], "9CA3AF", 12), ind: base(L) + 120, after: 40 });
+      for (j = i; j < ls.length && ls[j].k === "quote" && (ls[j].lv || 0) === (L.lv || 0); j++) q += exP(exRuns(ls[j].runs, { color: "4B5563" }), po(ls[j], { bdr: exBdr(["left"], "9CA3AF", 12), ind: base(L) + 120, after: 40 }));
       add(q);
       i = j; continue;
     }
-    if (L.k === "head") add(exP(exRuns(L.runs), { style: "Heading" + Math.min(5, (L.h || 1) + (tl || 1)), ind: base(L) }));
-    else if (L.k === "item") add(exP(exR(L.mark) + EX_TAB + exRuns(L.runs), { ind: base(L), hang: EX_IND }));
-    else add(exP(exRuns(L.runs), { ind: base(L) }));
+    if (L.k === "head") add(exP(exRuns(L.runs), po(L, { style: "Heading" + Math.min(5, (L.h || 1) + (tl || 1)), ind: base(L) })));
+    else if (L.k === "item") add(exP(exR(L.mark) + EX_TAB + exRuns(L.runs), po(L, { ind: base(L), hang: EX_IND })));
+    else add(exP(exRuns(L.runs), po(L, { ind: base(L) })));
     i++;
   }
 }
