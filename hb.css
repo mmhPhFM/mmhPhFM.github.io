@@ -815,6 +815,8 @@ body.drw-noscroll{overflow:hidden}
 .dup-v input{width:6em}
 .dup-p{font-size:13px;color:var(--accent);font-weight:700}
 
+@media (hover:none) and (pointer:coarse){.kbopen{display:none!important}}
+
 .y3d{--ln:clamp(14px,2.3cqw,28px);position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:#1f1a15;border-radius:inherit;outline:none;touch-action:none;user-select:none;-webkit-user-select:none;container-type:inline-size;cursor:grab;-webkit-tap-highlight-color:transparent}
 .y3d-stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;overflow:clip;background:#2a241e}
 .y3d.drag{cursor:grabbing}
