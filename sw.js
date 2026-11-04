@@ -1,5 +1,5 @@
-var V = "hb-8178c0aef0";
-var ASSETS = ["hb.css?v=8178c0aef0", "hb3d.js?v=8178c0aef0", "hb.js?v=8178c0aef0"];
+var V = "hb-ce50f0b8e6";
+var ASSETS = ["hb.css?v=ce50f0b8e6", "hb3d.js?v=ce50f0b8e6", "hb.js?v=ce50f0b8e6"];
 var PAGES = ["hb.html", "index.html"];
 var SOFT = ["cfg.js"];
 var LAZY = ["hbpdf.js", "hbcmap.js"];
