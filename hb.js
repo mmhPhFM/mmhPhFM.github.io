@@ -4506,13 +4506,15 @@ function backendCheck(cb) {
   ]);
 }
 
-function nf404() { APP.className = "app"; APP.innerHTML = ""; APP.appendChild(h("div", { class: "nf404" }, [h("b", {}, ["404"]), h("span", {}, ["找不到這一頁"])])); }
+var DEV_TITLE = "PHFM Devs";
+function devTitle(on) { try { document.title = on ? DEV_TITLE : "404"; } catch (e) {  } }
+function nf404() { devTitle(false); APP.className = "app"; APP.innerHTML = ""; APP.appendChild(h("div", { class: "nf404" }, [h("b", {}, ["404"]), h("span", {}, ["找不到這一頁"])])); }
 function devEntry() {
   if (!X) { nf404(); return; }
   gate(function (g) {
     if (g !== "ok" && g !== "login") { nf404(); return; }
     API = "https://script.google.com/macros/s/" + X + "/exec";
-    call("hbDevGo", [DEVP], { ms: 60000 }).then(function (x) { if (x && x.ok) devId(""); else nf404(); }, function () { nf404(); });
+    call("hbDevGo", [DEVP], { ms: 60000 }).then(function (x) { if (x && x.ok) { devTitle(true); devId(""); } else nf404(); }, function () { nf404(); });
   });
 }
 function devId(msg) {
