@@ -2388,3 +2388,13 @@ html.hb-off #pane-view .side{top:calc(var(--tabsH,58px) + 8px + var(--offh,44px)
   .art .sdx.sdwrap>:first-child{float:none;width:auto;margin:0 0 10px}
 }
 .rbk-flow .sdx.sdcol,.rbk-flow .figsw{break-inside:avoid}
+.pvbg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.pvt{position:absolute;opacity:.5}
+.pvt img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+.scr.pvon .scr-in{position:relative;z-index:1}
+.pcone{width:100%;font:600 20px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-align:center}
+.nf404{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#555;font:16px/1.6 system-ui,-apple-system,"Noto Sans TC",sans-serif;text-align:center;padding:20px}
+.nf404 b{font:700 56px/1 system-ui,sans-serif;color:#999;margin-bottom:10px}
+.lgwrap .lgrow{display:flex;border:0;padding:0;background:none;align-items:center}
+.lgwrap .lgin{max-width:240px;flex:1 1 160px;letter-spacing:.12em}
+.lgwrap .lggo{white-space:nowrap;flex:none}
