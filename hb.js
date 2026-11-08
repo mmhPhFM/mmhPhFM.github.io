@@ -3382,7 +3382,23 @@ function bxLoad() { try { var v = localStorage.getItem("hbx"); if (XRE.test(v ||
 function keySave() { if (ONCE || !XRE.test(X) || !TRE.test(T)) return; try { localStorage.setItem("hbk", JSON.stringify({ x: X, t: T })); localStorage.setItem("hbx", X); } catch (e) {  } }
 function keyDrop() { try { var o = keyLoad(); if (o && o.x === X && o.t === T) localStorage.removeItem("hbk"); } catch (e) {  } if (typeof offClear === "function") offClear(); }
 function bxDrop() { try { if (localStorage.getItem("hbx") === X) localStorage.removeItem("hbx"); var o = keyLoad(); if (o && o.x === X) localStorage.removeItem("hbk"); } catch (e) {  } if (typeof offClearAll === "function") offClearAll(); }
-var CFGX = ""; try { if (typeof window.HB_X === "string" && XRE.test(window.HB_X)) CFGX = window.HB_X; } catch (e) {  }
+function xdec(c) {
+  var m = /^1\.([0-9a-z]{8})\.([A-Za-z0-9_-]{20,240})$/.exec(String(c || "")); if (!m) return "";
+  try {
+    var b = atob(m[2].replace(/-/g, "+").replace(/_/g, "/")), seed = 2166136261, k, out = "", i;
+    for (i = 0; i < m[1].length; i++) { seed ^= m[1].charCodeAt(i); seed = Math.imul(seed, 16777619) >>> 0; }
+    for (i = 0; i < b.length; i++) { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; k = seed & 255; out += String.fromCharCode(b.charCodeAt(i) ^ k); }
+    return XRE.test(out) ? out : "";
+  } catch (e) { return ""; }
+}
+function xenc(x) {
+  var salt = "", i, seed = 2166136261, b = "", A = "ghijklmnopabcdef";
+  for (i = 0; i < 8; i++) salt += A.charAt(Math.floor(Math.random() * 16));
+  for (i = 0; i < salt.length; i++) { seed ^= salt.charCodeAt(i); seed = Math.imul(seed, 16777619) >>> 0; }
+  for (i = 0; i < x.length; i++) { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; b += String.fromCharCode(x.charCodeAt(i) ^ (seed & 255)); }
+  return "1." + salt + "." + btoa(b).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+var CFGX = ""; try { if (typeof window.HB_X === "string" && XRE.test(window.HB_X)) CFGX = window.HB_X; else if (typeof window.HB_T9 === "string") CFGX = xdec(window.HB_T9); } catch (e) {  }
 var PCR_A = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz", PCR_RE = /^[2-9A-HJ-NP-Za-kmnp-z]{12,16}$/, PCR_LK = /^[2-9A-HJ-NP-Za-kmnp-z]{5,9}$/;
 var PCL_RE = /^([a-z0-9]{28}|[a-z0-9]{12}|[2-9A-HJ-NP-Za-kmnp-z]{12,16})$/, PCL_A = "abcdefghijklmnopqrstuvwxyz0123456789", LK_RE = /^([a-z0-9]{16}|[a-z0-9]{5}|[2-9A-HJ-NP-Za-kmnp-z]{5,9})$/;
 var HASH0 = String(location.hash || "").replace(/^#/, "");
@@ -3686,11 +3702,11 @@ function scrLoginCode(why, r) {
   var boxesRO = function (on) { boxes.ins.forEach(function (x) { x.readOnly = on; }); };
   var go = h("button", { class: "btn pri lggo", type: "button" }, ["登入"]);
   var msg = h("div", { class: "scr-m lgm", role: "status" });
-  var wrap = h("div", { class: "lgwrap", hidden: true }, [h("div", { class: "lgst2" }, ["② LINE 會回你 6 位數的", h("b", {}, ["驗證碼"]), "，打在這裡"]), boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), msg]);
+  var wrap = h("div", { class: "lgwrap", hidden: true }, [h("div", { class: "lgst2" }, ["② 請輸入", h("b", {}, ["驗證碼"])]), boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), msg]);
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
     h("div", { class: "lggrid" }, [pair, wrap]),
-    h("p", { class: "lgfine" }, ["把代號貼到 LINE 的「藥戰手冊」帳號，換 6 位數驗證碼。第一次登入，還要打員工編號和姓名（對得上員工名單的馬上可以看）。", h("br"), "代號、驗證碼只能在這個網頁用；代號 " + LG_MIN + " 分鐘內要完成登入（超過會自己換新的）；驗證碼只能用一次，不要傳給任何人。"]),
+    h("p", { class: "lgfine" }, ["代號、驗證碼只能在這裡用、只能用一次；不要給任何人。"]),
     KEEP_ED || (typeof KEEP_QE !== "undefined" && KEEP_QE) ? h("p", { class: "lockkeep" }, ["✏️ 你有還沒儲存的修改：登入以後會接著編輯（還沒存進去）。"]) : null], "lgscr");
   var my = ++LG.seq;
   var alive = function () { return my === LG.seq && pair.isConnected; };
@@ -3714,10 +3730,10 @@ function scrLoginCode(why, r) {
     pair.innerHTML = "";
     if (dev) pair.appendChild(h("div", { class: "lgrole" }, ["🛠 開發者登入"]));
     if (LG.note) pair.appendChild(h("div", { class: "lgnote" }, [LG.note]));
-    pair.appendChild(h("div", { class: "lgst" }, ["① 打開 LINE 的「藥戰手冊」（一對一，不是群組），把這組", h("b", {}, [dev ? "開發者代號" : "代號"]), dev ? "打進去" : "貼進去"]));
+    pair.appendChild(h("div", { class: "lgst" }, ["① 請把這組", h("b", {}, [dev ? "開發者代號" : "代號"]), dev ? "打進藥戰手冊" : "複製到藥戰手冊"]));
     pair.appendChild(h("div", { class: "lgcode" + (dev ? " num" : ""), id: "lgcode", role: "img", "aria-label": (dev ? "開發者代號 " : "代號 ") + c.split("").join(" ") }, [shown]));
     pair.appendChild(cb);
-    pair.appendChild(h("div", { class: "lgmeta" }, [dev ? "" : "英文大小寫都可以　", "請在 ", h("b", { id: "lgcd" }, [""]), " 內完成登入", h("br"), again]));
+    pair.appendChild(h("div", { class: "lgmeta" }, [h("b", { id: "lgcd" }, [""]), " 內有效", h("br"), again]));
     wrap.hidden = false;
     lgStop(); tick(); LG.tm = setInterval(tick, 1000);
     if (typeof pvShow === "function") { if (LG.pv) { if (!PVB.lay || !PVB.lay.isConnected) pvShow(LG.pv); } else pvClear(); }
@@ -3767,12 +3783,12 @@ function scrLoginCode(why, r) {
   var submit = function () {
     if (LG.busy) return;
     var raw = boxes.get(), v = String(raw || "").replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 65248); }).replace(/[\s\-－–—]/g, "");
-    var sc = /^(\d{6}|\d{12})$/.test(v) ? "" : pcCodeOf(raw);
+    var sc = /^(\d{6}|\d{12,16})$/.test(v) ? "" : pcCodeOf(raw);
     if (sc) { PCLK = lkOf(sc); lkSave(PCLK); lgStop(); if (typeof pvClear === "function") pvClear(); scrLoginPc("", r); return; }
     if (!LG.code || LG.dead) { gone("這組代號已經不能用了"); return; }
     if (LG.ex <= Date.now()) { start("⌛ 超過 " + LG_MIN + " 分鐘沒有登入，已經換成新的代號：把這組新的再貼到 LINE 就好。"); return; }
-    if (!/^(\d{6}|\d{12})$/.test(v)) { msg.textContent = "請打 LINE 回給你的 6 位數字"; boxes.focus(); return; }
-    if (LG.dev && v === LG.code) { msg.textContent = "這裡要打 LINE 回給你的 6 位數驗證碼，不是上面的開發者代號（開發者代號是要打進 LINE 的）。"; return; }
+    if (!/^(\d{6}|\d{12,16})$/.test(v)) { msg.textContent = "請輸入 LINE 回給你的驗證碼"; boxes.focus(); return; }
+    if (LG.dev && v === LG.code) { msg.textContent = "這裡要打 LINE 回給你的驗證碼，不是上面的開發者代號。"; return; }
     LG.busy = true; go.disabled = true; boxesRO(true); msg.textContent = "確認中…";
     var slow = setTimeout(function () { if (LG.busy && pair.isConnected) msg.textContent = "確認中…後端剛睡醒的時候要等 30 秒左右，請先別關掉、也不用再按。"; }, 6000);
     var P = LG.sec;
@@ -3873,7 +3889,7 @@ function pcBoxes(onEnter, id0) {
     return k;
   };
   var fire = function (i, v) {
-    var full = pcCodeOf(v);
+    var full = pcCodeOf(v) || (/^\d{12,16}$/.test(clean(v)) ? clean(v) : "");
     if (full) { B.set(full); focusAt(PCC_N - 1); return; }
     put(i, clean(v));
     if (grow()) { focusAt(next(0)); return; }
@@ -3921,7 +3937,7 @@ function pcBoxes(onEnter, id0) {
 function pcHasCfg() { try { return typeof window.HB_XC === "string" || typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
 function pcHas7() { try { return typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
 function pcFine() {
-  return h("p", { class: "lgfine" }, ["短碼 10 分鐘內有效、用一次就失效，只給你自己用，不要傳給任何人。這台電腦不會記住你，共用的電腦也可以放心用。", h("br"), "在手機上：" + MSG_LINE]);
+  return h("p", { class: "lgfine" }, ["短碼只能用一次；不要給任何人。"]);
 }
 function scrFirst(why, msg, r) {
   lgStop(); pcStop();
@@ -3952,9 +3968,9 @@ function scrFirst(why, msg, r) {
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
     h("div", { class: "pcbox", id: "pcstep0" }, [
-      h("div", { class: "lgst" }, ["① 填入", h("b", {}, ["隨機驗證短碼"]), "：在手機 LINE 的「藥戰手冊」按下面那排的「", h("b", {}, ["🔗 外部連結"]), "」→「", h("b", {}, ["🔑 短碼"]), "」，看著卡片上的大字", h("b", {}, ["一格一格打在下面（照卡片的 4 組；大小寫要一樣）"]), "，打完一組按空白鍵跳下一格；可以複製的時候，按卡片上的「", h("b", {}, ["📋 自動複製"]), "」貼在第一格就會自動分好。"]),
+      h("div", { class: "lgst" }, ["① 請輸入", h("b", {}, ["短碼"]), "（LINE「🔗 外部連結」→「🔑 短碼」）"]),
       boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), m,
-      h("div", { class: "lgst2 pcnext" }, ["② 下一步：打你的員工編號和姓名"])]),
+      h("div", { class: "lgst2 pcnext" }, ["② 員工編號和姓名"])]),
     pcFine(),
     !why && !canLogin() ? h("p", { class: "lgfine" }, ["（藥戰手冊是自己的 LINE 帳號：還沒加的話，補藥神器下面那排的「📘 藥戰手冊」就是加入的按鈕。）"]) : null,
     KEEP_ED || (typeof KEEP_QE !== "undefined" && KEEP_QE) ? h("p", { class: "lockkeep" }, ["✏️ 你有還沒儲存的修改：登入以後會接著編輯（還沒存進去）。"]) : null], "lgscr pcscr pclscr");
@@ -3975,8 +3991,8 @@ function scrLoginPc(why, r) {
   var m = h("div", { class: "scr-m lgm", role: "status", "aria-live": "polite" });
   var again = h("button", { class: "lglink", type: "button", id: "pcre" }, ["換一組短碼"]);
   var step1 = h("div", { class: "pcbox", id: "pcstep1" }, [
-    h("div", { class: "pclhint", id: "pclhint" }, ["✅ 隨機驗證短碼填好了（10 分鐘內有效）　", again]),
-    h("div", { class: "lgst" }, ["② 打你的", h("b", {}, ["員工編號"]), "和", h("b", {}, ["姓名"]), "（要跟申請時填的一樣）"]),
+    h("div", { class: "pclhint", id: "pclhint" }, ["✅ 短碼填好了　", again]),
+    h("div", { class: "lgst" }, ["② 請輸入", h("b", {}, ["員工編號"]), "和", h("b", {}, ["姓名"])]),
     h("div", { class: "scr-form" }, [h("label", {}, [h("span", {}, ["員工編號"]), emp]), h("label", {}, [h("span", {}, ["姓名"]), nm])]),
     h("div", { class: "scr-b" }, [go]), m]);
   var box = screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
@@ -20662,7 +20678,7 @@ function pcGhCheck(k7, xx) {
 function pcDraw(box, r, blob, blob7, xx) {
   box.innerHTML = "";
   var on7 = !!r.on7, k7 = r.code7 || "";
-  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑥」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：短碼用\n";
+  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑥」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：短碼用\nwindow.HB_T9 = \"" + xenc(xx) + "\";\n";
   var dl = btn("⬇️ 下載 cfg.js", function () {
     try { var u = URL.createObjectURL(new Blob([cfg], { type: "text/javascript" })); if (typeof exDownload === "function") exDownload(u, "cfg.js"); else { var a = h("a", { href: u, download: "cfg.js" }); document.body.appendChild(a); a.click(); a.remove(); } setTimeout(function () { URL.revokeObjectURL(u); }, 2000); } catch (e) { toast("下載不了：請重新整理再試一次"); }
   }, "sm pri pcdl");
