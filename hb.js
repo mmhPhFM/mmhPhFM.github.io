@@ -2867,8 +2867,8 @@ function _yzApprovalBubble_(rq) {
     header: _yzHead_("📘 藥戰手冊", "新的使用申請", "請確認是院內同事再核可"),
     body: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "13px", contents: c },
     footer: { type: "box", layout: "horizontal", spacing: "sm", paddingAll: "10px", contents: [
-      { type: "button", style: "primary", color: YZ_ACCENT, height: "sm", flex: 1, action: _yzPB_("yz=ok&u=" + rq.id + (rq.sig ? "&s=" + rq.sig : ""), "✅ 核可") },
-      { type: "button", style: "secondary", height: "sm", flex: 1, action: _yzPB_("yz=no&u=" + rq.id + (rq.sig ? "&s=" + rq.sig : ""), "✖ 拒絕") }
+      { type: "button", style: "primary", color: YZ_ACCENT, height: "sm", flex: 1, action: _yzPB_("yz=ok&u=" + rq.id, "✅ 核可") },
+      { type: "button", style: "secondary", height: "sm", flex: 1, action: _yzPB_("yz=no&u=" + rq.id, "✖ 拒絕") }
     ] }
   };
 }
@@ -3372,7 +3372,7 @@ function applyCfg() {
 })();
 function hashParams() { var o = {}; String(location.hash || "").replace(/^#/, "").split("&").forEach(function (kv) { var i = kv.indexOf("="); if (i > 0) { try { o[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {  } } }); return o; }
 var IS404 = !!(document.body && document.body.classList.contains("hb404"));
-var DEVP = (function () { if (!IS404) return ""; var seg = String(location.pathname || "").split("/").pop() || ""; return /^[a-z]{3}\d{2}[a-z0-9]{7}$/.test(seg) ? seg : ""; })();
+var DEVP = (function () { if (!IS404) return ""; var seg = String(location.pathname || "").split("/").pop() || ""; return /^[a-z]{3}\d{2}$/.test(seg) ? seg : ""; })();
 var ONCE = false;
 var HP = hashParams(), XRE = /^[A-Za-z0-9_-]{20,120}$/, TRE = /^[0-9a-f]{32}$/;
 var X = HP.x || "", T = HP.dev || HP.app || "", FROMLINK = !!T, FROMSAVED = false;
@@ -4498,13 +4498,6 @@ function catBlob(cat, cb) {
 
 function backendCheck(cb) {
   var RX = CFGX || (SAVED ? SAVED.x : bxLoad());
-  if (!RX && HP.x && XRE.test(HP.x)) {
-    scrMsg("🔐 第一次在這台打開藥戰手冊", ["這條連結要連到後端（…" + HP.x.slice(-6) + "）。", "只有在 LINE「藥戰手冊」官方帳號裡按的連結才可以繼續；別人傳給你的連結、網路上看到的，請直接關掉這個網頁。"], [
-      btn("是我在 LINE 按的，繼續", function () { cb(); }, "pri"),
-      btn("關掉", function () { X = ""; T = ""; TICKET = ""; try { history.replaceState(null, "", location.pathname); } catch (e) {  } scrMsg("已經停下來了", ["這台沒有連到任何後端。請回 LINE「藥戰手冊」官方帳號重新按連結。"]); })
-    ]);
-    return;
-  }
   if (!RX || !HP.x || RX === HP.x || !XRE.test(HP.x)) { cb(); return; }
   scrMsg("⚠️ 這條連結要連到不同的後端", ["這台原本連的後端（…" + RX.slice(-6) + "），跟這條連結的（…" + HP.x.slice(-6) + "）不一樣。", "如果這條連結不是你自己從 LINE 按的，請直接關掉這個網頁。"], [
     btn("用原本連的", function () { X = RX; try { history.replaceState(null, "", location.pathname); } catch (e) {  } if (SAVED && SAVED.x === RX) { T = SAVED.t; FROMSAVED = true; FROMLINK = false; } else { T = ""; } TICKET = ""; cb(); }, "pri"),
@@ -4613,13 +4606,19 @@ function pvShow(list) {
 }
 var PV_RT = 0;
 function pvResize() { clearTimeout(PV_RT); PV_RT = setTimeout(function () { if (PVB.lay && PVB.lay.isConnected) pvPlace(); else pvClear(); }, 120); }
+function pvZones() {
+  var free = pvFree(0), used = {}, out = [];
+  PVB.list.forEach(function (p) { if (free.indexOf(p.z) >= 0 && !used[p.z]) { used[p.z] = 1; out.push(p.z); } else out.push(-1); });
+  out.forEach(function (z, i) { if (z >= 0) return; for (var k = 0; k < free.length; k++) if (!used[free[k]]) { used[free[k]] = 1; out[i] = free[k]; return; } out[i] = PVB.list[i].z; });
+  return out;
+}
 function pvPlace() {
   var lay = PVB.lay; if (!lay || !PVB.list) return;
   lay.innerHTML = "";
-  var W = window.innerWidth, H = window.innerHeight, cell = Math.min(W / 3, H / 3), c = pvCard(), CR = null;
+  var W = window.innerWidth, H = window.innerHeight, cell = Math.min(W / 3, H / 3), c = pvCard(), CR = null, ZS = pvZones();
   if (c) { var r = c.getBoundingClientRect(); CR = { l: r.left, r: r.right, t: r.top, b: r.bottom }; }
   PVB.list.forEach(function (p, i) {
-    var zx = p.z % 3, zy = Math.floor(p.z / 3), k = PVB.ks[i] || 0.6, best = null, rot = Math.round((Math.random() - 0.5) * 30);
+    var zz = ZS[i], zx = zz % 3, zy = Math.floor(zz / 3), k = PVB.ks[i] || 0.6, best = null, rot = Math.round((Math.random() - 0.5) * 30);
     for (var f = 1; f >= 0.3 && !(best && !best.ov); f -= 0.14) {
       var s = Math.round(cell * k * f), fx = W / 3 - s - 8, fy = H / 3 - s - 8, rr = s * 0.21;
       for (var t = 0; t < 24; t++) {
@@ -19002,20 +19001,6 @@ function drPv(b) {
   }, function () { job.busy = false; job.k = ""; });
   return job.full ? job : null;
 }
-var DR_NUMK = { x: 1, y: 1, w: 1, h: 1, x1: 1, y1: 1, x2: 1, y2: 1, lw: 1, dw: 1, dh: 1, fs: 1, lh: 1, W: 1, H: 1, r: 1, rot: 1 };
-var DR_SAFEK = { k: 1, c: 1, lc: 1, ds: 1, ah: 1, al: 1, st: 1, f: 1, a: 1, b: 1, id: 1, v: 1, A: 1, L: 1 };
-function drSan(o, dep) {
-  if (dep > 8 || !o || typeof o !== "object") return o;
-  if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) o[i] = (o[i] && typeof o[i] === "object") ? drSan(o[i], dep + 1) : o[i]; return o; }
-  Object.keys(o).forEach(function (k) {
-    var v = o[k];
-    if (DR_NUMK[k]) { v = +v; o[k] = isFinite(v) ? v : 0; }
-    else if (k === "pts" && Array.isArray(v)) o[k] = v.map(function (n) { if (n && typeof n === "object") return drSan(n, dep + 1); n = +n; return isFinite(n) ? n : 0; });
-    else if (DR_SAFEK[k] && typeof v === "string" && !/^[#A-Za-z0-9_.,%() \-]{0,60}$/.test(v)) delete o[k];
-    else if (v && typeof v === "object") drSan(v, dep + 1);
-  });
-  return o;
-}
 function drRecover(b, done) {
   if (!b || !b.fid) { toast("這張圖還沒有上傳好"); return; }
   call("hbPicData", [b.fid]).then(function (r) {
@@ -19024,7 +19009,7 @@ function drRecover(b, done) {
     var b64 = String(r.b64 || ""), u8 = null;
     try { var bin = atob(b64); u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); } catch (e) { u8 = null; }
     var tx = u8 ? (drPngGet(u8, "yzdraw") || drJpgGet(u8, "yzdraw")) : "", d = null;
-    try { d = tx ? drSan(JSON.parse(drUnB64(tx)), 0) : null; } catch (e) { d = null; }
+    try { d = tx ? JSON.parse(drUnB64(tx)) : null; } catch (e) { d = null; }
     if (!d || !Array.isArray(d.s)) { toast("這張圖不是用繪圖畫的（找不到畫的資料）"); return; }
     var keep = b.draw && b.draw.bg && b.draw.bg.ocr;
     b.draw = { v: 1, W: d.W, H: d.H, s: d.s, l: Array.isArray(d.l) ? d.l : [], p: Array.isArray(d.p) ? d.p : [] };

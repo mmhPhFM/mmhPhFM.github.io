@@ -1,11 +1,11 @@
-var V = "hb-b180b7eddb";
-var ASSETS = ["hb.css?v=b180b7eddb", "hb3d.js?v=b180b7eddb", "hb.js?v=b180b7eddb"];
+var V = "hb-6ad012a422";
+var ASSETS = ["hb.css?v=6ad012a422", "hb3d.js?v=6ad012a422", "hb.js?v=6ad012a422"];
 var PAGES = ["hb.html", "index.html"];
 var SOFT = ["cfg.js"];
 var LAZY = ["hbpdf.js", "hbcmap.js"];
 var BASE = self.registration.scope;
 function u(p) { return new URL(p, BASE).href; }
-function put(req, r) { try { var cp = r.clone(), key = String(req.url || "").split("#")[0].split("?")[0]; caches.open(V).then(function (c) { return c.put(key, cp); }).catch(function () {}); } catch (e) {} }
+function put(req, r) { try { var cp = r.clone(); caches.open(V).then(function (c) { return c.put(req, cp); }).catch(function () {}); } catch (e) {} }
 function withTimeout(p, ms) { return new Promise(function (ok, bad) { var t = setTimeout(function () { bad(new Error("timeout")); }, ms); p.then(function (r) { clearTimeout(t); ok(r); }, function (e) { clearTimeout(t); bad(e); }); }); }
 function fromCache(req, alt) { return caches.open(V).then(function (c) { return c.match(req, { ignoreSearch: true }).then(function (r) { if (r) return r; return alt ? c.match(u(alt)) : null; }); }); }
 function netFirst(req, ms, alt) {
