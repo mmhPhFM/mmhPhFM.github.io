@@ -4522,7 +4522,41 @@ function backendCheck(cb) {
 
 var DEV_TITLE = "PHFM Devs";
 function devTitle(on) { try { document.title = on ? DEV_TITLE : "404"; } catch (e) {  } }
-function nf404() { devTitle(false); APP.className = "app"; APP.innerHTML = ""; APP.appendChild(h("div", { class: "nf404" }, [h("b", {}, ["404"]), h("span", {}, ["找不到這一頁"])])); }
+var NF_KIND = [
+  { k: "drop", t: "這一頁掉到不知道哪裡去了" },
+  { k: "seek", t: "翻遍了手冊，還是找不到這一頁" },
+  { k: "flip", t: "這一頁好像被撕掉了" },
+  { k: "float", t: "這一頁飄走了" },
+  { k: "pill", t: "這一頁被吃掉了" },
+  { k: "nap", t: "這一頁在休息，找不到" },
+  { k: "spin", t: "這一頁迷路了" }
+];
+function nfPick() {
+  var last = -1, i;
+  try { last = parseInt(localStorage.getItem("nf404v"), 10); } catch (e) {  }
+  i = Math.floor(Math.random() * NF_KIND.length);
+  if (i === last) i = (i + 1 + Math.floor(Math.random() * (NF_KIND.length - 1))) % NF_KIND.length;
+  try { localStorage.setItem("nf404v", String(i)); } catch (e) {  }
+  return i;
+}
+function nf404() {
+  devTitle(false);
+  if (APP.querySelector(".nf404.nfa")) return;
+  var K = NF_KIND[nfPick()], dig = function (c, n) { return h("i", { class: "nfd nfd" + n }, [c]); };
+  var zero = K.k === "pill" ? h("i", { class: "nfd nfd2 nfcap", "aria-hidden": "true" }, [h("i", {}), h("i", {})]) : dig("0", 2);
+  APP.className = "app"; APP.innerHTML = "";
+  APP.appendChild(h("div", { class: "nf404 nfa nf-" + K.k, "data-k": K.k, role: "main" }, [
+    h("div", { class: "nfstage", "aria-hidden": "true" }, [
+      h("div", { class: "nflogo" }, [logoImg("nfimg")]),
+      K.k === "seek" ? h("i", { class: "nflens" }) : null,
+      K.k === "nap" ? h("i", { class: "nfz" }, [h("i", {}, ["z"]), h("i", {}, ["z"]), h("i", {}, ["Z"])]) : null,
+      K.k === "float" ? h("i", { class: "nfbub" }, [h("i", {}), h("i", {}), h("i", {})]) : null,
+      h("div", { class: "nfdig" }, [dig("4", 1), zero, dig("4", 3)])
+    ]),
+    h("b", { class: "nfsr" }, ["404"]),
+    h("span", { class: "nft" }, [K.t])
+  ]));
+}
 function devEntry() {
   if (!X) { nf404(); return; }
   gate(function (g) {
@@ -4565,6 +4599,7 @@ function start() {
   APP = $("#app");
   if (window.top !== window.self) { try { document.documentElement.innerHTML = ""; } catch (e) {  } return; }
   if (IS404) {
+    nf404();
     if (!DEVP) return;
     scResolve(function () { devEntry(); });
     return;
