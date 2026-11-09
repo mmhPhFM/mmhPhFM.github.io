@@ -3972,7 +3972,6 @@ function scrFirst(why, msg, r) {
       boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), m,
       h("div", { class: "lgst2 pcnext" }, ["② 員工編號和姓名"])]),
     pcFine(),
-    !why && !canLogin() ? h("p", { class: "lgfine" }, ["（藥戰手冊是自己的 LINE 帳號：還沒加的話，補藥神器下面那排的「📘 藥戰手冊」就是加入的按鈕。）"]) : null,
     KEEP_ED || (typeof KEEP_QE !== "undefined" && KEEP_QE) ? h("p", { class: "lockkeep" }, ["✏️ 你有還沒儲存的修改：登入以後會接著編輯（還沒存進去）。"]) : null], "lgscr pcscr pclscr");
   setTimeout(function () { if (my === PC.seq) boxes.focus(); }, 30);
 }
