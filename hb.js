@@ -3586,12 +3586,16 @@ function retryBtn() { return btn("🔄 再試一次", function () { SESS++; boot
 function stop(msg, code, need) {
   SESS++;
   lockClean();
-  if (code === "bind" && need) { scrBind(msg); return; }
+  if (code === "bind" && need) { scrBind(msg, need === 2); return; }
   if (code === "tok") { keyDrop(); T = ""; if (canLogin()) { scrLogin("tok"); return; } scrMsg("連結過期了", [msg || "登入的鑰匙不對或過期了。", MSG_LINE]); return; }
   if (code === "moved") { bxDrop(); scrMsg("藥戰手冊搬家了", [msg || "藥戰手冊搬到自己的 LINE 帳號了：到 LINE 加入「藥戰手冊」，從那裡按「🌐 網頁」打開。", "（這條連結是補藥神器以前給的舊連結。）"]); return; }
   scrMsg(code === "down" ? "現在連不到後端" : "沒辦法打開", [msg || "後端沒有回應。"], [reloadBtn()]);
 }
-function scrBind(msg) {
+function scrBind(msg, show) {
+  if (canLogin()) { LG.role = ""; LG.wd = true; scrLoginCode(show && msg ? "again" : "", show && msg ? { err: msg } : {}); return; }
+  scrBind6(msg);
+}
+function scrBind6(msg) {
   var inp = h("input", { class: "in code6", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", placeholder: "6 位數碼", "aria-label": "綁定碼" });
   var m = h("div", { class: "scr-m", role: "status" });
   var b = btn("綁定", function () {
@@ -3601,7 +3605,7 @@ function scrBind(msg) {
     call("appBind", [c, DEVLAB]).then(function (r) {
       b.disabled = false;
       if (r && r.ok) { m.textContent = "✅ 綁好了"; boot(); return; }
-      if (r && r.swap) { scrSwap(r, function () { boot(); }, function () { scrBind("沒有換掉任何一台，這台還沒綁定。要綁的話，再到 LINE 打「開發者網頁 綁定」拿新的 6 位數碼。"); }); return; }
+      if (r && r.swap) { scrSwap(r, function () { boot(); }, function () { scrBind6("沒有換掉任何一台，這台還沒綁定。要綁的話，再到 LINE 打「開發者網頁 綁定」拿新的 6 位數碼。"); }); return; }
       m.textContent = "❌ " + (r && r.err || "沒綁成功，再試一次"); inp.value = "";
     }, function (e) { b.disabled = false; m.textContent = "❌ " + e.message; });
   }, "pri");
@@ -3802,7 +3806,7 @@ function scrLoginCode(why, r) {
         return;
       }
       if (x && TRE.test(String(x.t || ""))) {
-        LG.code = ""; LG.dead = true; lgSave(); lgStop();
+        LG.code = ""; LG.dead = true; lgSave(); lgStop(); if (typeof pvClear === "function") pvClear();
         T = String(x.t); FROMSAVED = false; FROMLINK = false; keySave();
         onBoot(x); return;
       }
@@ -4592,7 +4596,18 @@ function devEntry() {
   gate(function (g) {
     if (g !== "ok" && g !== "login") { nf404(); return; }
     API = "https://script.google.com/macros/s/" + X + "/exec";
-    call("hbDevGo", [DEVP], { ms: 60000 }).then(function (x) { if (x && x.ok) { devTitle(true); devId(""); } else nf404(); }, function () { nf404(); });
+    call("hbDevGo", [DEVP], { ms: 60000 }).then(function (x) { if (x && x.ok) { devTitle(true); devPv(); } else nf404(); }, function () { nf404(); });
+  });
+}
+function devPv() {
+  scrPvStep({
+    head: [logo(), h("h2", {}, ["🛠 ① 圖片驗證"])],
+    step: "在 LINE 按「🖼 圖片」，選跟這個畫面一樣的圖騰，把驗證碼打在下面",
+    go: function (zs) { return call("hbDevPvNew", [DEVP, zs], { ms: 60000 }).then(function (x) { if (!x || x.nf) return { out: 1 }; if (x.done || x.pvoff) return { skip: 1 }; return x; }); },
+    chk: function (sec, v) { return call("hbDevPv", [DEVP, sec, v], { ms: 60000 }).then(function (x) { return !x || x.nf ? { out: 1 } : x; }); },
+    ok: function () { devId(""); },
+    out: function () { pvClear(); nf404(); },
+    fine: "驗證碼只能在這裡用、只能用一次；不要給任何人。"
   });
 }
 function devId(msg) {
@@ -4615,14 +4630,63 @@ function devId(msg) {
         onBoot(x); return;
       }
       if (!x || x.nf) { nf404(); return; }
+      if (x.pvneed) { devPv(); return; }
       m.textContent = "❌ " + String(x.err || "員工編號或姓名不對").slice(0, 120);
     }, function () { busy = false; go.disabled = false; m.textContent = "❌ 連不上，再按一次"; });
   }, "pri");
   [emp, nm].forEach(function (inp) { inp.onkeydown = function (ev) { if (ev.key === "Enter") go.onclick(); }; });
-  screen([logo(), h("h2", {}, ["🛠 員工編號＋姓名"]),
+  screen([logo(), h("h2", {}, ["🛠 ② 員工編號＋姓名"]),
     h("div", { class: "scr-form" }, [h("label", {}, [h("span", {}, ["員工編號"]), emp]), h("label", {}, [h("span", {}, ["姓名"]), nm])]),
     h("div", { class: "scr-b" }, [go]), m], "lgscr pcscr devscr");
   try { emp.focus(); } catch (e) {  }
+}
+
+function scrPvStep(o) {
+  pvClear(); lgStop();
+  var my = ++LG.seq, sec = "", busy = false, tm = 0;
+  var boxes = pcBoxes(function () { sub(); }, "pvbox0");
+  var go = h("button", { class: "btn pri lggo", type: "button", id: "pvgo" }, ["下一步"]);
+  var msg = h("div", { class: "scr-m lgm", role: "status", "aria-live": "polite" });
+  var box = h("div", { class: "pcbox", id: "pvstep" }, [h("div", { class: "lgst" }, [o.step]), boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), msg]);
+  var scr = screen([].concat(o.head, [box, o.fine ? h("p", { class: "lgfine" }, [o.fine]) : null]), "lgscr pcscr pvscr");
+  var alive = function () { return my === LG.seq && scr.isConnected; };
+  var stop = function () { clearInterval(tm); tm = 0; };
+  var ro = function (on) { go.disabled = on; boxes.ins.forEach(function (x) { x.readOnly = on; }); };
+  var poll = function () {
+    if (!alive()) { stop(); return; }
+    if (busy || !sec || document.visibilityState === "hidden") return;
+    var P = sec;
+    call("appCodeSt", [P], { ms: 20000 }).then(function (x) { if (alive() && P === sec && x && (x.burn || x.gone)) start("圖騰換了一組：請在 LINE 再按一次「🖼 圖片」"); }, function () {  });
+  };
+  var start = function (note) {
+    stop(); pvClear(); sec = ""; boxes.clear(); ro(true); msg.textContent = note || "準備中…";
+    o.go(pvFree(0)).then(function (x) {
+      if (!alive()) return;
+      if (x && x.skip) { stop(); o.ok(); return; }
+      if (x && x.sec && Array.isArray(x.pv)) { sec = String(x.sec); ro(false); msg.textContent = note || ""; pvShow(x.pv); tm = setInterval(poll, 8000); try { boxes.ins[0].focus({ preventScroll: true }); } catch (e) {  } return; }
+      if (x && x.out) { stop(); o.out(x); return; }
+      msg.textContent = "❌ " + String(x && x.err || "沒拿到，再試一次").slice(0, 160); ro(false);
+    }, function () { if (alive()) { msg.textContent = "❌ 連不上，網路好了再按「下一步」"; ro(false); } });
+  };
+  var sub = function () {
+    if (busy) return;
+    if (!sec) { start(""); return; }
+    var v = String(boxes.get() || "").replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 65248); }).replace(/[\s\-－–—]/g, "");
+    if (!/^\d{12,16}$/.test(v)) { msg.textContent = "請輸入 LINE 給你的驗證碼"; boxes.focus(); return; }
+    busy = true; ro(true); msg.textContent = "確認中…";
+    var P = sec;
+    o.chk(P, v).then(function (x) {
+      busy = false; ro(false);
+      if (!alive() || P !== sec) return;
+      if (x && x.ok) { stop(); pvClear(); o.ok(); return; }
+      if (x && x.out) { stop(); pvClear(); o.out(x); return; }
+      if (x && x.gone) { start("這一組不能用了，換了新的圖騰：請在 LINE 再按一次「🖼 圖片」"); return; }
+      msg.textContent = "❌ " + String(x && x.err || "驗證碼不對，再輸入一次").slice(0, 160); boxes.clear(); boxes.focus();
+    }, function () { busy = false; ro(false); if (alive()) msg.textContent = "❌ 連不上，再按一次"; });
+  };
+  go.onclick = sub;
+  start("");
+  return scr;
 }
 
 function start() {
@@ -20976,14 +21040,14 @@ function devDel(d, el) {
     AD.busy = true; if (el) el.disabled = true;
     call("hbDeviceDel", [d.id]).then(function (r) {
       AD.busy = false;
-      if (r && r.ok && r.me) { stop("這台已經從開發者網頁刪掉了。要再用：在 LINE 的「藥戰手冊」打「開發者網頁 綁定」，把 6 位數碼打在下面。", "bind", 1); return; }
+      if (r && r.ok && r.me) { stop("這台已經從開發者網頁刪掉了。要再用：照下面重新驗證一次。", "bind", 2); return; }
       if (r && r.list) { AD.dv = r; drawDevices(); }
       if (!adOk(r)) { if (el) el.disabled = false; return; }
       toast("已刪掉「" + nm + "」：那台馬上不能用開發者網頁");
     }, function (e) { AD.busy = false; if (el) el.disabled = false; toast("❌ " + e.message); });
   };
   modal({ title: (d.me ? "刪掉正在用的這台？" : "刪掉「" + nm + "」？"), lines: d.me ? [
-    "這是你現在用的這台（" + nm + "）。刪掉以後，這台馬上不能用開發者網頁；要再用，得重新綁定（LINE 打「開發者網頁 綁定」）。",
+    "這是你現在用的這台（" + nm + "）。刪掉以後，這台馬上不能用開發者網頁；要再用，得重新驗證一次。",
     dirty ? "⚠ 編輯器有還沒存的修改，刪掉以後會不見：先按「儲存」再刪。" : "用公用電腦、別人的電腦時，用完可以這樣刪掉。"
   ] : [
     "刪掉以後，那台馬上不能用開發者網頁（那台要再用，得重新綁定）。",
