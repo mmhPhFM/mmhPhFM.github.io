@@ -2656,3 +2656,11 @@ html.hb-off #pane-view .side{top:calc(var(--tabsH,58px) + 8px + var(--offh,44px)
 .dvqqr{width:220px;height:220px;image-rendering:pixelated;display:block;margin:10px auto;max-width:100%}
 .dvqcd{font-size:13px;color:#6B7785}.dvqcd b{color:var(--accent,#0E7C66)}
 .dvqst{font-size:14px;margin:10px 0 4px}.dvqst.good{color:#1E7A3A;font-weight:700}.dvqst.bad{color:#B42318}
+
+/* 第 81 批：連結做的按鍵不要底線 */
+a.btn{text-decoration:none;display:inline-flex;align-items:center}
+/* 第 81 批：⑦ 上面那一區 */
+.abz{background:var(--abz-bg,#fff4f2);border:1px solid var(--abz-bd,#f1b8ad);border-radius:12px;padding:10px 12px;margin:4px 0 14px}
+.abzh{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline;margin-bottom:6px}
+.abzk{display:inline-block;padding:2px 8px;border-radius:8px;background:#fde2dd;color:#a3321f;font-size:12px;font-weight:700}
+@media (prefers-color-scheme:dark){.abz{--abz-bg:#3a2320;--abz-bd:#7a3a30}.abzk{background:#5a2a24;color:#ffc9bf}}

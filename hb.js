@@ -5672,6 +5672,7 @@ var ONCE = false;
 var HP = hashParams(), XRE = /^[A-Za-z0-9_-]{20,120}$/, TRE = /^[0-9a-f]{32}$/;
 var X = HP.x || "", T = HP.dev || HP.app || "", FROMLINK = !!T, FROMSAVED = false;
 var TICKET = /^[0-9a-z]{6,11}\.[0-9a-f]{24}$/.test(HP.k || "") ? HP.k : "";
+var DQ = /^[A-HJ-NP-Za-km-z2-9]{10}$/.test(HP.dq || "") ? HP.dq : "";   // 第 81 批：掃了開發者資格 QR
 function keyLoad() { try { var o = JSON.parse(localStorage.getItem("hbk") || "null"); if (o && XRE.test(String(o.x || "")) && TRE.test(String(o.t || ""))) return o; } catch (e) {  } return null; }
 function bxLoad() { try { var v = localStorage.getItem("hbx"); if (XRE.test(v || "")) return v; } catch (e) {  } return ""; }
 function keySave() { if (ONCE || !XRE.test(X) || !TRE.test(T)) return; try { localStorage.setItem("hbk", JSON.stringify({ x: X, t: T })); localStorage.setItem("hbx", X); } catch (e) {  } }
@@ -5707,7 +5708,7 @@ var SAVED = keyLoad();
 if (!T && !SCODE && SAVED && (!X || SAVED.x === X) && (!CFGX || SAVED.x === CFGX)) { X = SAVED.x; T = SAVED.t; FROMSAVED = true; }
 if (!X && !T && !SCODE) X = CFGX || bxLoad();
 try {
-  if (/(^|[#&])(app|dev|k)=/.test(location.hash || "")) history.replaceState(null, "", location.pathname);
+  if (/(^|[#&])(app|dev|k|dq)=/.test(location.hash || "")) history.replaceState(null, "", location.pathname);
   else if (/(^|[#&])x=/.test(location.hash || "")) {
     var RX0 = CFGX || (SAVED ? SAVED.x : bxLoad()), XOK = XRE.test(HP.x || "") && HP.x === X;
     if (XOK && (!RX0 || RX0 === X)) { try { localStorage.setItem("hbx", X); } catch (e) {  } history.replaceState(null, "", location.pathname); }
@@ -5839,6 +5840,7 @@ function call(fn, args, opt) {
           var code = j && typeof j.code === "string" ? j.code : "", msg = j && typeof j.err === "string" ? j.err : "";
           if (!code && !msg && n < tries) { setTimeout(go, 900 * n); return; }
           if (code === "tok" || code === "bind" || code === "down" || code === "moved") { stop(msg, code, j.need); return; }
+          if (code === "nf") { SESS++; nf404(); return; }
           var e = new Error(msg || "後端沒有回應"); e.code = code; bad(e); return;
         }
         if (j.r && j.r.moved) { stop(String(j.r.err || ""), "moved"); return; }
@@ -6900,6 +6902,20 @@ function devEntry() {
     call("hbDevGo", [DEVP], { ms: 60000 }).then(function (x) { if (x && x.ok) { devTitle(true); devPv(); } else nf404(); }, function () { nf404(); });
   });
 }
+function dqEntry() {   // 第 81 批：LINE 掃了開發者資格 QR → 確認卡片直接送到他的 LINE（不用打字送出）
+  var bad = function (t) { scrMsg("⚠️ 卡片沒送出", [t, "請開發者在網頁再按一次「👑 設為開發者」。"]); };
+  scrMsg("📩 送卡片到你的 LINE…", ["請稍等幾秒。"]);
+  if (!X) { bad("這個網站還沒設定好。"); return; }
+  gate(function (g) {
+    if (g !== "ok" && g !== "login") { bad("這個瀏覽器不能用，請用 LINE 掃。"); return; }
+    API = "https://script.google.com/macros/s/" + X + "/exec";
+    call("hbDevQrScan", [DQ], { ms: 40000 }).then(function (r) {
+      if (!r || r.err || !r.ok) { scrMsg("⚠️ 卡片沒送出", [String(r && r.err || "等一下再掃一次。")]); return; }
+      var go = /^https:\/\/line\.me\/R\/ti\/p\//.test(r.oa || "") ? h("a", { class: "btn pri", href: r.oa }, ["💬 回 LINE 的藥戰手冊"]) : null;
+      scrMsg("📩 卡片送到你的 LINE 了", ["回 LINE 的「藥戰手冊」，按卡片上的「👑 確認」。", "5 分鐘內有效。"], go ? [go] : []);
+    }, function (e) { bad(e.message); });
+  });
+}
 function devPv() {
   scrPvStep({
     head: [logo(), h("h2", {}, ["🛠 ① 圖片驗證"])],
@@ -6993,6 +7009,7 @@ function scrPvStep(o) {
 function start() {
   APP = $("#app");
   if (window.top !== window.self) { try { document.documentElement.innerHTML = ""; } catch (e) {  } return; }
+  if (DQ) { dqEntry(); return; }
   if (IS404) {
     nf404();
     if (!DEVP) return;
@@ -23076,7 +23093,7 @@ function buildAdminPane() {
   pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["④ 🔒 我的裝置（開發者網頁綁定的）"]), h("div", { id: "devBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
   pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "pcSec", hidden: true }, [h("h2", {}, ["⑤ 🖥 電腦登入用的 cfg.js（要換一次）"]), h("div", { id: "pcBox" })]));
   pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["⑥ 📤 匯出給 Copilot（SharePoint 用）"]), h("div", { id: "exBox" })]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "abSec" }, [h("h2", {}, ["⑦ 🛡 不正常的存取（只記錄，不擋）"]), h("div", { id: "abBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "abSec" }, [h("h2", {}, ["⑦ 🛡 不正常的存取"]), h("div", { id: "abBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
 }
 function pcLinkBase() { return location.origin + location.pathname; }
 function pcShow(on) { var sec = $("#pcSec"); if (sec) sec.hidden = !on; }
@@ -23156,9 +23173,22 @@ function drawAbn() {
   if (note) {
     note.innerHTML = ""; note.hidden = !nf;
     if (nf) {
-      note.appendChild(h("span", {}, ["🛡 不正常的存取：", h("b", {}, ["有 " + nf + " 筆新的"]), "（只記錄，沒有擋）"]));
+      note.appendChild(h("span", {}, ["🛡 不正常的存取：", h("b", {}, ["有 " + nf + " 筆新的"]), ""]));
       note.appendChild(btn("到 ⑦ 看", function () { var sec = $("#abSec"); if (sec) try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { sec.scrollIntoView(); } }, "sm"));
     }
+  }
+  var z = r.zq;
+  if (z && z.n && z.a && z.a.length) {
+    var zt = h("table", { class: "tbl abtbl" });
+    zt.appendChild(h("tr", {}, (z.c || []).concat([""]).map(function (x) { return h("th", {}, [x]); })));
+    z.a.forEach(function (x) {
+      var b = btn(z.b || "OK", function () {
+        b.disabled = true;
+        call("hbAbn", ["zq", x.i]).then(function (q) { if (!adOk(q)) { b.disabled = false; return; } r.zq = q.zq; drawAbn(); toast("✅ " + (z.b || "OK") + "：" + abWho(x)); }, function (e) { b.disabled = false; toast("❌ " + e.message); });
+      }, "sm");
+      zt.appendChild(h("tr", {}, [h("td", { class: "muted nowrap" }, [x.at]), h("td", { class: "nowrap" }, [h("span", { class: "abzk" }, [x.kind])]), h("td", {}, [abWho(x)]), h("td", {}, [x.dev || "—"]), h("td", { class: "nowrap" }, [b])]));
+    });
+    box.appendChild(h("div", { class: "abz" }, [h("div", { class: "abzh" }, [h("b", {}, [z.h || ""]), h("span", { class: "muted" }, [z.s ? "　" + z.s : ""])]), h("div", { class: "tscroll" }, [zt])]));
   }
   box.appendChild(h("div", { class: "abhd" }, [h("span", { class: "abn" }, [nf ? "🆕 新的 " + nf + " 筆（上次打開管理頁以後記的）" : "沒有新的"]), r.seen ? h("span", { class: "muted" }, ["上次看：" + r.seen]) : null, btn("🔄 重新整理", abLoad, "sm")]));
   if (!a.length) box.appendChild(h("div", { class: "muted" }, ["還沒有紀錄。"]));
@@ -23168,7 +23198,7 @@ function drawAbn() {
     a.forEach(function (x, i) { tb.appendChild(h("tr", { class: i < nf ? "new" : null }, [h("td", { class: "muted nowrap" }, [x.at]), h("td", { class: "nowrap" }, [x.kind]), h("td", {}, [abWho(x)]), h("td", {}, [x.dev || "—"]), h("td", {}, [x.note])])); });
     box.appendChild(h("div", { class: "tscroll logscroll" }, [tb]));
   }
-  box.appendChild(h("div", { class: "hint" }, ["只記錄，不擋人，也不推播（不用 LINE 則數）。記這幾種：登入一直打錯、太頻繁、短時間看很多篇（10 分鐘 40 篇，LINE＋網頁一起算）、別台裝置用開發者連結、看不懂的請求、有人按了「全部登出」。同一種、同一個人 10 分鐘只記一次；手冊試算表的「異常紀錄」分頁也看得到（最多留 3000 筆）。"]));
+  box.appendChild(h("div", { class: "hint" }, ["不推播（不用 LINE 則數）。記這幾種：登入一直打錯、太頻繁、短時間看很多篇（10 分鐘 40 篇，LINE＋網頁一起算）、別台裝置用開發者連結、看不懂的請求、有人按了「全部登出」。同一種、同一個人 10 分鐘只記一次；手冊試算表的「異常紀錄」分頁也看得到（最多留 3000 筆）。"]));
 }
 function adOk(r) {
   if (!r) { toast("❌ 後端沒有回應"); return false; }
@@ -23368,7 +23398,7 @@ function devQrFlow(u, el) {
     var qrBox = h("div", { class: "dvqbox" }, [img, h("div", { class: "dvqcd" }, ["剩 ", cd, "・只能用一次・別人的 LINE 掃了不算"])]);
     var x = btn("關掉", close, "sm");
     var dlg = h("div", { class: "dlg dvq" }, [h("div", { class: "dvqsite" }, [DEV_TITLE]), h("h3", {}, ["👑 開發者資格 QR：" + nm]), steps,
-      h("p", {}, ["請 ", h("b", {}, [nm]), " 用他自己的 LINE 掃這個 QR（LINE 主頁的掃描器）。"]), qrBox, st, h("div", { class: "dlg-b" }, [x])]);
+      h("p", {}, ["請 ", h("b", {}, [nm]), " 用他自己的 LINE 掃這個 QR（LINE 主頁的掃描器）：卡片會直接送到他的 LINE，不用打字。"]), qrBox, st, h("div", { class: "dlg-b" }, [x])]);
     var finish = function (t, good) { done = true; stop(); qrBox.hidden = true; st.textContent = t; st.className = "dvqst " + (good ? "good" : "bad"); };
     drawSteps(); st.textContent = "⏳ 等他掃…";
     bx.appendChild(dlg); document.body.appendChild(bx);
