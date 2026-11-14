@@ -1,3 +1,2296 @@
+/* 第 80 批：開發者資格 QR 用的 QR 產生器（qrcode-generator 1.4.4，Kazuhiko Arase，MIT 授權） */
+(function () {
+//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  //---------------------------------------------------------------------
+  // qrcode
+  //---------------------------------------------------------------------
+
+  /**
+   * qrcode
+   * @param typeNumber 1 to 40
+   * @param errorCorrectionLevel 'L','M','Q','H'
+   */
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = [];
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      // vertical
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      // horizontal
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      // fixed module
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      // calc num max data.
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw 'code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')';
+      }
+
+      // end code
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      // padding
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      // padding
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw row + ',' + col;
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      if (_typeNumber < 1) {
+        var typeNumber = 1;
+
+        for (; typeNumber < 40; typeNumber++) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, _errorCorrectionLevel);
+          var buffer = qrBitBuffer();
+
+          for (var i = 0; i < _dataList.length; i++) {
+            var data = _dataList[i];
+            buffer.put(data.getMode(), 4);
+            buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+            data.write(buffer);
+          }
+
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+
+          if (buffer.getLengthInBits() <= totalDataCount * 8) {
+            break;
+          }
+        }
+
+        _typeNumber = typeNumber;
+      }
+
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createTableTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var qrHtml = '';
+
+      qrHtml += '<table style="';
+      qrHtml += ' border-width: 0px; border-style: none;';
+      qrHtml += ' border-collapse: collapse;';
+      qrHtml += ' padding: 0px; margin: ' + margin + 'px;';
+      qrHtml += '">';
+      qrHtml += '<tbody>';
+
+      for (var r = 0; r < _this.getModuleCount(); r += 1) {
+
+        qrHtml += '<tr>';
+
+        for (var c = 0; c < _this.getModuleCount(); c += 1) {
+          qrHtml += '<td style="';
+          qrHtml += ' border-width: 0px; border-style: none;';
+          qrHtml += ' border-collapse: collapse;';
+          qrHtml += ' padding: 0px; margin: 0px;';
+          qrHtml += ' width: ' + cellSize + 'px;';
+          qrHtml += ' height: ' + cellSize + 'px;';
+          qrHtml += ' background-color: ';
+          qrHtml += _this.isDark(r, c)? '#000000' : '#ffffff';
+          qrHtml += ';';
+          qrHtml += '"/>';
+        }
+
+        qrHtml += '</tr>';
+      }
+
+      qrHtml += '</tbody>';
+      qrHtml += '</table>';
+
+      return qrHtml;
+    };
+
+    _this.createSvgTag = function(cellSize, margin, alt, title) {
+
+      var opts = {};
+      if (typeof arguments[0] == 'object') {
+        // Called by options.
+        opts = arguments[0];
+        // overwrite cellSize and margin.
+        cellSize = opts.cellSize;
+        margin = opts.margin;
+        alt = opts.alt;
+        title = opts.title;
+      }
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      // Compose alt property surrogate
+      alt = (typeof alt === 'string') ? {text: alt} : alt || {};
+      alt.text = alt.text || null;
+      alt.id = (alt.text) ? alt.id || 'qrcode-description' : null;
+
+      // Compose title property surrogate
+      title = (typeof title === 'string') ? {text: title} : title || {};
+      title.text = title.text || null;
+      title.id = (title.text) ? title.id || 'qrcode-title' : null;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : '';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '" ';
+      qrSvg += ' preserveAspectRatio="xMinYMin meet"';
+      qrSvg += (title.text || alt.text) ? ' role="img" aria-labelledby="' +
+          escapeXml([title.id, alt.id].join(' ').trim() ) + '"' : '';
+      qrSvg += '>';
+      qrSvg += (title.text) ? '<title id="' + escapeXml(title.id) + '">' +
+          escapeXml(title.text) + '</title>' : '';
+      qrSvg += (alt.text) ? '<description id="' + escapeXml(alt.id) + '">' +
+          escapeXml(alt.text) + '</description>' : '';
+      qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="black"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    _this.createDataURL = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      return createDataURL(size, size, function(x, y) {
+        if (min <= x && x < max && min <= y && y < max) {
+          var c = Math.floor( (x - min) / cellSize);
+          var r = Math.floor( (y - min) / cellSize);
+          return _this.isDark(r, c)? 0 : 1;
+        } else {
+          return 1;
+        }
+      } );
+    };
+
+    _this.createImgTag = function(cellSize, margin, alt) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+
+      var img = '';
+      img += '<img';
+      img += '\u0020src="';
+      img += _this.createDataURL(cellSize, margin);
+      img += '"';
+      img += '\u0020width="';
+      img += size;
+      img += '"';
+      img += '\u0020height="';
+      img += size;
+      img += '"';
+      if (alt) {
+        img += '\u0020alt="';
+        img += escapeXml(alt);
+        img += '"';
+      }
+      img += '/>';
+
+      return img;
+    };
+
+    var escapeXml = function(s) {
+      var escaped = '';
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charAt(i);
+        switch(c) {
+        case '<': escaped += '&lt;'; break;
+        case '>': escaped += '&gt;'; break;
+        case '&': escaped += '&amp;'; break;
+        case '"': escaped += '&quot;'; break;
+        default : escaped += c; break;
+        }
+      }
+      return escaped;
+    };
+
+    var _createHalfASCII = function(margin) {
+      var cellSize = 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r1, r2, p;
+
+      var blocks = {
+        '██': '█',
+        '█ ': '▀',
+        ' █': '▄',
+        '  ': ' '
+      };
+
+      var blocksLastLineNoMargin = {
+        '██': '▀',
+        '█ ': '▀',
+        ' █': ' ',
+        '  ': ' '
+      };
+
+      var ascii = '';
+      for (y = 0; y < size; y += 2) {
+        r1 = Math.floor((y - min) / cellSize);
+        r2 = Math.floor((y + 1 - min) / cellSize);
+        for (x = 0; x < size; x += 1) {
+          p = '█';
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
+            p = ' ';
+          }
+
+          if (min <= x && x < max && min <= y+1 && y+1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
+            p += ' ';
+          }
+          else {
+            p += '█';
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          ascii += (margin < 1 && y+1 >= max) ? blocksLastLineNoMargin[p] : blocks[p];
+        }
+
+        ascii += '\n';
+      }
+
+      if (size % 2 && margin > 0) {
+        return ascii.substring(0, ascii.length - size - 1) + Array(size+1).join('▀');
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.createASCII = function(cellSize, margin) {
+      cellSize = cellSize || 1;
+
+      if (cellSize < 2) {
+        return _createHalfASCII(margin);
+      }
+
+      cellSize -= 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r, p;
+
+      var white = Array(cellSize+1).join('██');
+      var black = Array(cellSize+1).join('  ');
+
+      var ascii = '';
+      var line = '';
+      for (y = 0; y < size; y += 1) {
+        r = Math.floor( (y - min) / cellSize);
+        line = '';
+        for (x = 0; x < size; x += 1) {
+          p = 1;
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
+            p = 0;
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          line += p ? white : black;
+        }
+
+        for (r = 0; r < cellSize; r += 1) {
+          ascii += line + '\n';
+        }
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.renderTo2dContext = function(context, cellSize) {
+      cellSize = cellSize || 2;
+      var length = _this.getModuleCount();
+      for (var row = 0; row < length; row++) {
+        for (var col = 0; col < length; col++) {
+          context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
+          context.fillRect(row * cellSize, col * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrcode.stringToBytes
+  //---------------------------------------------------------------------
+
+  qrcode.stringToBytesFuncs = {
+    'default' : function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        bytes.push(c & 0xff);
+      }
+      return bytes;
+    }
+  };
+
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];
+
+  //---------------------------------------------------------------------
+  // qrcode.createStringToBytes
+  //---------------------------------------------------------------------
+
+  /**
+   * @param unicodeData base64 string of byte array.
+   * [16bit Unicode],[16bit Bytes], ...
+   * @param numChars
+   */
+  qrcode.createStringToBytes = function(unicodeData, numChars) {
+
+    // create conversion map.
+
+    var unicodeMap = function() {
+
+      var bin = base64DecodeInputStream(unicodeData);
+      var read = function() {
+        var b = bin.read();
+        if (b == -1) throw 'eof';
+        return b;
+      };
+
+      var count = 0;
+      var unicodeMap = {};
+      while (true) {
+        var b0 = bin.read();
+        if (b0 == -1) break;
+        var b1 = read();
+        var b2 = read();
+        var b3 = read();
+        var k = String.fromCharCode( (b0 << 8) | b1);
+        var v = (b2 << 8) | b3;
+        unicodeMap[k] = v;
+        count += 1;
+      }
+      if (count != numChars) {
+        throw count + ' != ' + numChars;
+      }
+
+      return unicodeMap;
+    }();
+
+    var unknownChar = '?'.charCodeAt(0);
+
+    return function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        if (c < 128) {
+          bytes.push(c);
+        } else {
+          var b = unicodeMap[s.charAt(i)];
+          if (typeof b == 'number') {
+            if ( (b & 0xff) == b) {
+              // 1byte
+              bytes.push(b);
+            } else {
+              // 2bytes
+              bytes.push(b >>> 8);
+              bytes.push(b & 0xff);
+            }
+          } else {
+            bytes.push(unknownChar);
+          }
+        }
+      }
+      return bytes;
+    };
+  };
+
+  //---------------------------------------------------------------------
+  // QRMode
+  //---------------------------------------------------------------------
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  //---------------------------------------------------------------------
+  // QRErrorCorrectionLevel
+  //---------------------------------------------------------------------
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  //---------------------------------------------------------------------
+  // QRMaskPattern
+  //---------------------------------------------------------------------
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  //---------------------------------------------------------------------
+  // QRUtil
+  //---------------------------------------------------------------------
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw 'bad maskPattern:' + maskPattern;
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        // 1 - 9
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 27) {
+
+        // 10 - 26
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 41) {
+
+        // 27 - 40
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else {
+        throw 'type:' + type;
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      // LEVEL1
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      // LEVEL2
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      // LEVEL3
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      // LEVEL4
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // QRMath
+  //---------------------------------------------------------------------
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    // initialize tables
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw 'glog(' + n + ')';
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrPolynomial
+  //---------------------------------------------------------------------
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw num.length + '/' + shift;
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      // recursive call
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // QRRSBlock
+  //---------------------------------------------------------------------
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+
+      // L
+      // M
+      // Q
+      // H
+
+      // 1
+      [1, 26, 19],
+      [1, 26, 16],
+      [1, 26, 13],
+      [1, 26, 9],
+
+      // 2
+      [1, 44, 34],
+      [1, 44, 28],
+      [1, 44, 22],
+      [1, 44, 16],
+
+      // 3
+      [1, 70, 55],
+      [1, 70, 44],
+      [2, 35, 17],
+      [2, 35, 13],
+
+      // 4
+      [1, 100, 80],
+      [2, 50, 32],
+      [2, 50, 24],
+      [4, 25, 9],
+
+      // 5
+      [1, 134, 108],
+      [2, 67, 43],
+      [2, 33, 15, 2, 34, 16],
+      [2, 33, 11, 2, 34, 12],
+
+      // 6
+      [2, 86, 68],
+      [4, 43, 27],
+      [4, 43, 19],
+      [4, 43, 15],
+
+      // 7
+      [2, 98, 78],
+      [4, 49, 31],
+      [2, 32, 14, 4, 33, 15],
+      [4, 39, 13, 1, 40, 14],
+
+      // 8
+      [2, 121, 97],
+      [2, 60, 38, 2, 61, 39],
+      [4, 40, 18, 2, 41, 19],
+      [4, 40, 14, 2, 41, 15],
+
+      // 9
+      [2, 146, 116],
+      [3, 58, 36, 2, 59, 37],
+      [4, 36, 16, 4, 37, 17],
+      [4, 36, 12, 4, 37, 13],
+
+      // 10
+      [2, 86, 68, 2, 87, 69],
+      [4, 69, 43, 1, 70, 44],
+      [6, 43, 19, 2, 44, 20],
+      [6, 43, 15, 2, 44, 16],
+
+      // 11
+      [4, 101, 81],
+      [1, 80, 50, 4, 81, 51],
+      [4, 50, 22, 4, 51, 23],
+      [3, 36, 12, 8, 37, 13],
+
+      // 12
+      [2, 116, 92, 2, 117, 93],
+      [6, 58, 36, 2, 59, 37],
+      [4, 46, 20, 6, 47, 21],
+      [7, 42, 14, 4, 43, 15],
+
+      // 13
+      [4, 133, 107],
+      [8, 59, 37, 1, 60, 38],
+      [8, 44, 20, 4, 45, 21],
+      [12, 33, 11, 4, 34, 12],
+
+      // 14
+      [3, 145, 115, 1, 146, 116],
+      [4, 64, 40, 5, 65, 41],
+      [11, 36, 16, 5, 37, 17],
+      [11, 36, 12, 5, 37, 13],
+
+      // 15
+      [5, 109, 87, 1, 110, 88],
+      [5, 65, 41, 5, 66, 42],
+      [5, 54, 24, 7, 55, 25],
+      [11, 36, 12, 7, 37, 13],
+
+      // 16
+      [5, 122, 98, 1, 123, 99],
+      [7, 73, 45, 3, 74, 46],
+      [15, 43, 19, 2, 44, 20],
+      [3, 45, 15, 13, 46, 16],
+
+      // 17
+      [1, 135, 107, 5, 136, 108],
+      [10, 74, 46, 1, 75, 47],
+      [1, 50, 22, 15, 51, 23],
+      [2, 42, 14, 17, 43, 15],
+
+      // 18
+      [5, 150, 120, 1, 151, 121],
+      [9, 69, 43, 4, 70, 44],
+      [17, 50, 22, 1, 51, 23],
+      [2, 42, 14, 19, 43, 15],
+
+      // 19
+      [3, 141, 113, 4, 142, 114],
+      [3, 70, 44, 11, 71, 45],
+      [17, 47, 21, 4, 48, 22],
+      [9, 39, 13, 16, 40, 14],
+
+      // 20
+      [3, 135, 107, 5, 136, 108],
+      [3, 67, 41, 13, 68, 42],
+      [15, 54, 24, 5, 55, 25],
+      [15, 43, 15, 10, 44, 16],
+
+      // 21
+      [4, 144, 116, 4, 145, 117],
+      [17, 68, 42],
+      [17, 50, 22, 6, 51, 23],
+      [19, 46, 16, 6, 47, 17],
+
+      // 22
+      [2, 139, 111, 7, 140, 112],
+      [17, 74, 46],
+      [7, 54, 24, 16, 55, 25],
+      [34, 37, 13],
+
+      // 23
+      [4, 151, 121, 5, 152, 122],
+      [4, 75, 47, 14, 76, 48],
+      [11, 54, 24, 14, 55, 25],
+      [16, 45, 15, 14, 46, 16],
+
+      // 24
+      [6, 147, 117, 4, 148, 118],
+      [6, 73, 45, 14, 74, 46],
+      [11, 54, 24, 16, 55, 25],
+      [30, 46, 16, 2, 47, 17],
+
+      // 25
+      [8, 132, 106, 4, 133, 107],
+      [8, 75, 47, 13, 76, 48],
+      [7, 54, 24, 22, 55, 25],
+      [22, 45, 15, 13, 46, 16],
+
+      // 26
+      [10, 142, 114, 2, 143, 115],
+      [19, 74, 46, 4, 75, 47],
+      [28, 50, 22, 6, 51, 23],
+      [33, 46, 16, 4, 47, 17],
+
+      // 27
+      [8, 152, 122, 4, 153, 123],
+      [22, 73, 45, 3, 74, 46],
+      [8, 53, 23, 26, 54, 24],
+      [12, 45, 15, 28, 46, 16],
+
+      // 28
+      [3, 147, 117, 10, 148, 118],
+      [3, 73, 45, 23, 74, 46],
+      [4, 54, 24, 31, 55, 25],
+      [11, 45, 15, 31, 46, 16],
+
+      // 29
+      [7, 146, 116, 7, 147, 117],
+      [21, 73, 45, 7, 74, 46],
+      [1, 53, 23, 37, 54, 24],
+      [19, 45, 15, 26, 46, 16],
+
+      // 30
+      [5, 145, 115, 10, 146, 116],
+      [19, 75, 47, 10, 76, 48],
+      [15, 54, 24, 25, 55, 25],
+      [23, 45, 15, 25, 46, 16],
+
+      // 31
+      [13, 145, 115, 3, 146, 116],
+      [2, 74, 46, 29, 75, 47],
+      [42, 54, 24, 1, 55, 25],
+      [23, 45, 15, 28, 46, 16],
+
+      // 32
+      [17, 145, 115],
+      [10, 74, 46, 23, 75, 47],
+      [10, 54, 24, 35, 55, 25],
+      [19, 45, 15, 35, 46, 16],
+
+      // 33
+      [17, 145, 115, 1, 146, 116],
+      [14, 74, 46, 21, 75, 47],
+      [29, 54, 24, 19, 55, 25],
+      [11, 45, 15, 46, 46, 16],
+
+      // 34
+      [13, 145, 115, 6, 146, 116],
+      [14, 74, 46, 23, 75, 47],
+      [44, 54, 24, 7, 55, 25],
+      [59, 46, 16, 1, 47, 17],
+
+      // 35
+      [12, 151, 121, 7, 152, 122],
+      [12, 75, 47, 26, 76, 48],
+      [39, 54, 24, 14, 55, 25],
+      [22, 45, 15, 41, 46, 16],
+
+      // 36
+      [6, 151, 121, 14, 152, 122],
+      [6, 75, 47, 34, 76, 48],
+      [46, 54, 24, 10, 55, 25],
+      [2, 45, 15, 64, 46, 16],
+
+      // 37
+      [17, 152, 122, 4, 153, 123],
+      [29, 74, 46, 14, 75, 47],
+      [49, 54, 24, 10, 55, 25],
+      [24, 45, 15, 46, 46, 16],
+
+      // 38
+      [4, 152, 122, 18, 153, 123],
+      [13, 74, 46, 32, 75, 47],
+      [48, 54, 24, 14, 55, 25],
+      [42, 45, 15, 32, 46, 16],
+
+      // 39
+      [20, 147, 117, 4, 148, 118],
+      [40, 75, 47, 7, 76, 48],
+      [43, 54, 24, 22, 55, 25],
+      [10, 45, 15, 67, 46, 16],
+
+      // 40
+      [19, 148, 118, 6, 149, 119],
+      [18, 75, 47, 31, 76, 48],
+      [34, 54, 24, 34, 55, 25],
+      [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw 'bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel;
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = [];
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrBitBuffer
+  //---------------------------------------------------------------------
+
+  var qrBitBuffer = function() {
+
+    var _buffer = [];
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrNumber
+  //---------------------------------------------------------------------
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrAlphaNum
+  //---------------------------------------------------------------------
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qr8BitByte
+  //---------------------------------------------------------------------
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrKanji
+  //---------------------------------------------------------------------
+
+  var qrKanji = function(data) {
+
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+
+    var stringToBytes = qrcode.stringToBytesFuncs['SJIS'];
+    if (!stringToBytes) {
+      throw 'sjis not supported.';
+    }
+    !function(c, code) {
+      // self test for sjis support.
+      var test = stringToBytes(c);
+      if (test.length != 2 || ( (test[0] << 8) | test[1]) != code) {
+        throw 'sjis not supported.';
+      }
+    }('\u53cb', 0x9746);
+
+    var _bytes = stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return ~~(_bytes.length / 2);
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _bytes;
+
+      var i = 0;
+
+      while (i + 1 < data.length) {
+
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+
+        if (0x8140 <= c && c <= 0x9FFC) {
+          c -= 0x8140;
+        } else if (0xE040 <= c && c <= 0xEBBF) {
+          c -= 0xC140;
+        } else {
+          throw 'illegal char at ' + (i + 1) + '/' + c;
+        }
+
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+
+        buffer.put(c, 13);
+
+        i += 2;
+      }
+
+      if (i < data.length) {
+        throw 'illegal char at ' + (i + 1);
+      }
+    };
+
+    return _this;
+  };
+
+  //=====================================================================
+  // GIF Support etc.
+  //
+
+  //---------------------------------------------------------------------
+  // byteArrayOutputStream
+  //---------------------------------------------------------------------
+
+  var byteArrayOutputStream = function() {
+
+    var _bytes = [];
+
+    var _this = {};
+
+    _this.writeByte = function(b) {
+      _bytes.push(b & 0xff);
+    };
+
+    _this.writeShort = function(i) {
+      _this.writeByte(i);
+      _this.writeByte(i >>> 8);
+    };
+
+    _this.writeBytes = function(b, off, len) {
+      off = off || 0;
+      len = len || b.length;
+      for (var i = 0; i < len; i += 1) {
+        _this.writeByte(b[i + off]);
+      }
+    };
+
+    _this.writeString = function(s) {
+      for (var i = 0; i < s.length; i += 1) {
+        _this.writeByte(s.charCodeAt(i) );
+      }
+    };
+
+    _this.toByteArray = function() {
+      return _bytes;
+    };
+
+    _this.toString = function() {
+      var s = '';
+      s += '[';
+      for (var i = 0; i < _bytes.length; i += 1) {
+        if (i > 0) {
+          s += ',';
+        }
+        s += _bytes[i];
+      }
+      s += ']';
+      return s;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64EncodeOutputStream
+  //---------------------------------------------------------------------
+
+  var base64EncodeOutputStream = function() {
+
+    var _buffer = 0;
+    var _buflen = 0;
+    var _length = 0;
+    var _base64 = '';
+
+    var _this = {};
+
+    var writeEncoded = function(b) {
+      _base64 += String.fromCharCode(encode(b & 0x3f) );
+    };
+
+    var encode = function(n) {
+      if (n < 0) {
+        // error.
+      } else if (n < 26) {
+        return 0x41 + n;
+      } else if (n < 52) {
+        return 0x61 + (n - 26);
+      } else if (n < 62) {
+        return 0x30 + (n - 52);
+      } else if (n == 62) {
+        return 0x2b;
+      } else if (n == 63) {
+        return 0x2f;
+      }
+      throw 'n:' + n;
+    };
+
+    _this.writeByte = function(n) {
+
+      _buffer = (_buffer << 8) | (n & 0xff);
+      _buflen += 8;
+      _length += 1;
+
+      while (_buflen >= 6) {
+        writeEncoded(_buffer >>> (_buflen - 6) );
+        _buflen -= 6;
+      }
+    };
+
+    _this.flush = function() {
+
+      if (_buflen > 0) {
+        writeEncoded(_buffer << (6 - _buflen) );
+        _buffer = 0;
+        _buflen = 0;
+      }
+
+      if (_length % 3 != 0) {
+        // padding
+        var padlen = 3 - _length % 3;
+        for (var i = 0; i < padlen; i += 1) {
+          _base64 += '=';
+        }
+      }
+    };
+
+    _this.toString = function() {
+      return _base64;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64DecodeInputStream
+  //---------------------------------------------------------------------
+
+  var base64DecodeInputStream = function(str) {
+
+    var _str = str;
+    var _pos = 0;
+    var _buffer = 0;
+    var _buflen = 0;
+
+    var _this = {};
+
+    _this.read = function() {
+
+      while (_buflen < 8) {
+
+        if (_pos >= _str.length) {
+          if (_buflen == 0) {
+            return -1;
+          }
+          throw 'unexpected end of file./' + _buflen;
+        }
+
+        var c = _str.charAt(_pos);
+        _pos += 1;
+
+        if (c == '=') {
+          _buflen = 0;
+          return -1;
+        } else if (c.match(/^\s$/) ) {
+          // ignore if whitespace.
+          continue;
+        }
+
+        _buffer = (_buffer << 6) | decode(c.charCodeAt(0) );
+        _buflen += 6;
+      }
+
+      var n = (_buffer >>> (_buflen - 8) ) & 0xff;
+      _buflen -= 8;
+      return n;
+    };
+
+    var decode = function(c) {
+      if (0x41 <= c && c <= 0x5a) {
+        return c - 0x41;
+      } else if (0x61 <= c && c <= 0x7a) {
+        return c - 0x61 + 26;
+      } else if (0x30 <= c && c <= 0x39) {
+        return c - 0x30 + 52;
+      } else if (c == 0x2b) {
+        return 62;
+      } else if (c == 0x2f) {
+        return 63;
+      } else {
+        throw 'c:' + c;
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // gifImage (B/W)
+  //---------------------------------------------------------------------
+
+  var gifImage = function(width, height) {
+
+    var _width = width;
+    var _height = height;
+    var _data = new Array(width * height);
+
+    var _this = {};
+
+    _this.setPixel = function(x, y, pixel) {
+      _data[y * _width + x] = pixel;
+    };
+
+    _this.write = function(out) {
+
+      //---------------------------------
+      // GIF Signature
+
+      out.writeString('GIF87a');
+
+      //---------------------------------
+      // Screen Descriptor
+
+      out.writeShort(_width);
+      out.writeShort(_height);
+
+      out.writeByte(0x80); // 2bit
+      out.writeByte(0);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Global Color Map
+
+      // black
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+
+      // white
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+
+      //---------------------------------
+      // Image Descriptor
+
+      out.writeString(',');
+      out.writeShort(0);
+      out.writeShort(0);
+      out.writeShort(_width);
+      out.writeShort(_height);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Local Color Map
+
+      //---------------------------------
+      // Raster Data
+
+      var lzwMinCodeSize = 2;
+      var raster = getLZWRaster(lzwMinCodeSize);
+
+      out.writeByte(lzwMinCodeSize);
+
+      var offset = 0;
+
+      while (raster.length - offset > 255) {
+        out.writeByte(255);
+        out.writeBytes(raster, offset, 255);
+        offset += 255;
+      }
+
+      out.writeByte(raster.length - offset);
+      out.writeBytes(raster, offset, raster.length - offset);
+      out.writeByte(0x00);
+
+      //---------------------------------
+      // GIF Terminator
+      out.writeString(';');
+    };
+
+    var bitOutputStream = function(out) {
+
+      var _out = out;
+      var _bitLength = 0;
+      var _bitBuffer = 0;
+
+      var _this = {};
+
+      _this.write = function(data, length) {
+
+        if ( (data >>> length) != 0) {
+          throw 'length over';
+        }
+
+        while (_bitLength + length >= 8) {
+          _out.writeByte(0xff & ( (data << _bitLength) | _bitBuffer) );
+          length -= (8 - _bitLength);
+          data >>>= (8 - _bitLength);
+          _bitBuffer = 0;
+          _bitLength = 0;
+        }
+
+        _bitBuffer = (data << _bitLength) | _bitBuffer;
+        _bitLength = _bitLength + length;
+      };
+
+      _this.flush = function() {
+        if (_bitLength > 0) {
+          _out.writeByte(_bitBuffer);
+        }
+      };
+
+      return _this;
+    };
+
+    var getLZWRaster = function(lzwMinCodeSize) {
+
+      var clearCode = 1 << lzwMinCodeSize;
+      var endCode = (1 << lzwMinCodeSize) + 1;
+      var bitLength = lzwMinCodeSize + 1;
+
+      // Setup LZWTable
+      var table = lzwTable();
+
+      for (var i = 0; i < clearCode; i += 1) {
+        table.add(String.fromCharCode(i) );
+      }
+      table.add(String.fromCharCode(clearCode) );
+      table.add(String.fromCharCode(endCode) );
+
+      var byteOut = byteArrayOutputStream();
+      var bitOut = bitOutputStream(byteOut);
+
+      // clear code
+      bitOut.write(clearCode, bitLength);
+
+      var dataIndex = 0;
+
+      var s = String.fromCharCode(_data[dataIndex]);
+      dataIndex += 1;
+
+      while (dataIndex < _data.length) {
+
+        var c = String.fromCharCode(_data[dataIndex]);
+        dataIndex += 1;
+
+        if (table.contains(s + c) ) {
+
+          s = s + c;
+
+        } else {
+
+          bitOut.write(table.indexOf(s), bitLength);
+
+          if (table.size() < 0xfff) {
+
+            if (table.size() == (1 << bitLength) ) {
+              bitLength += 1;
+            }
+
+            table.add(s + c);
+          }
+
+          s = c;
+        }
+      }
+
+      bitOut.write(table.indexOf(s), bitLength);
+
+      // end code
+      bitOut.write(endCode, bitLength);
+
+      bitOut.flush();
+
+      return byteOut.toByteArray();
+    };
+
+    var lzwTable = function() {
+
+      var _map = {};
+      var _size = 0;
+
+      var _this = {};
+
+      _this.add = function(key) {
+        if (_this.contains(key) ) {
+          throw 'dup key:' + key;
+        }
+        _map[key] = _size;
+        _size += 1;
+      };
+
+      _this.size = function() {
+        return _size;
+      };
+
+      _this.indexOf = function(key) {
+        return _map[key];
+      };
+
+      _this.contains = function(key) {
+        return typeof _map[key] != 'undefined';
+      };
+
+      return _this;
+    };
+
+    return _this;
+  };
+
+  var createDataURL = function(width, height, getPixel) {
+    var gif = gifImage(width, height);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        gif.setPixel(x, y, getPixel(x, y) );
+      }
+    }
+
+    var b = byteArrayOutputStream();
+    gif.write(b);
+
+    var base64 = base64EncodeOutputStream();
+    var bytes = b.toByteArray();
+    for (var i = 0; i < bytes.length; i += 1) {
+      base64.writeByte(bytes[i]);
+    }
+    base64.flush();
+
+    return 'data:image/gif;base64,' + base64;
+  };
+
+  //---------------------------------------------------------------------
+  // returns qrcode function.
+
+  return qrcode;
+}();
+
+// multibyte support
+!function() {
+
+  qrcode.stringToBytesFuncs['UTF-8'] = function(s) {
+    // http://stackoverflow.com/questions/18729405/how-to-convert-utf8-string-to-byte-array
+    function toUTF8Array(str) {
+      var utf8 = [];
+      for (var i=0; i < str.length; i++) {
+        var charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6),
+              0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+          i++;
+          // UTF-16 encodes 0x10000-0x10FFFF by
+          // subtracting 0x10000 and splitting the
+          // 20 bits of 0x0-0xFFFFF into two halves
+          charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+            | (str.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >>18),
+              0x80 | ((charcode>>12) & 0x3f),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+      }
+      return utf8;
+    }
+    return toUTF8Array(s);
+  };
+
+}();
+
+
+window.YZQR = qrcode;
+})();
 (function () {
 var HB_LOGO_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"153 123 1009 1009\"><path fill=\"#064742\" fill-rule=\"evenodd\" d=\"M616.0 1094.2C567.2 1033.0 485.4 991.3 389.6 978.9C358.2 974.8 314.9 975.2 281.3 979.7L269.0 981.4L252.3 964.8C231.6 944.3 213.5 928.6 194.2 914.6C189.1 910.8 185.1 907.3 185.3 906.6C186.1 904.2 219.1 903.3 247.0 905.0C327.9 909.9 413.6 931.9 479.5 964.8C516.7 983.3 543.9 1002.2 572.3 1029.2C588.4 1044.4 596.9 1054.1 609.8 1071.4C623.4 1089.7 622.3 1088.5 624.0 1086.8C624.8 1085.9 628.0 1081.8 631.0 1077.5C669.0 1023.6 712.4 986.8 771.3 958.5C803.8 942.8 834.2 932.1 878.0 920.7C930.3 907.0 1006.5 900.1 1054.8 904.7C1062.5 905.4 1062.7 906.9 1055.6 912.0C1037.5 925.1 1003.3 954.7 987.8 970.9C982.4 976.4 977.4 981.0 976.7 981.0C976.0 981.0 969.2 980.1 961.5 979.0C885.2 968.3 802.8 981.1 733.5 1014.4C693.0 1033.8 660.8 1058.0 634.0 1088.9C628.3 1095.6 623.1 1101.0 622.5 1101.0C621.9 1101.0 618.9 1098.0 616.0 1094.2ZM609.0 1047.8C587.8 1021.0 559.6 993.7 533.3 974.6C479.2 935.2 376.1 895.9 298.0 884.9C290.0 883.8 283.1 882.4 282.5 881.9C281.9 881.3 280.3 876.1 278.9 870.2C276.8 861.8 276.5 859.2 277.5 858.2C282.0 853.3 333.9 851.8 359.0 855.8C433.7 867.9 503.3 902.4 553.0 952.0C583.5 982.4 602.9 1011.7 612.4 1041.9C615.9 1053.1 614.8 1055.1 609.0 1047.8ZM631.6 1049.1C630.5 1047.3 635.2 1028.2 641.6 1008.9C654.8 968.6 683.4 927.3 716.8 900.1C722.0 895.9 728.3 890.8 730.8 888.7C738.0 882.9 753.3 872.9 766.5 865.2C777.5 858.9 788.9 852.8 822.5 835.5C829.1 832.1 842.9 824.9 853.3 819.6L872.0 809.8L874.9 811.7C876.4 812.7 883.7 818.1 891.1 823.7C898.5 829.3 908.5 836.9 913.5 840.6C924.0 848.5 952.7 867.8 962.3 873.5C975.8 881.5 976.0 882.4 963.8 883.4C932.9 886.0 876.3 898.3 840.5 910.1C748.5 940.6 681.5 984.5 639.5 1041.8C633.5 1050.0 632.6 1050.8 631.6 1049.1ZM621.2 1008.8C619.5 994.1 615.5 975.6 611.4 962.6C607.6 950.8 594.8 923.3 588.7 913.7C584.1 906.6 584.0 905.6 588.2 906.3C590.0 906.6 595.3 907.6 600.0 908.4C632.7 914.4 669.2 903.6 689.5 881.9C703.1 867.4 709.8 851.4 708.7 836.3C707.8 823.9 702.0 814.3 689.9 805.2C671.3 791.1 643.2 782.6 587.5 774.0C550.8 768.3 528.5 759.7 514.7 745.7C495.7 726.6 495.3 699.6 513.8 675.7C519.8 667.8 528.7 660.6 541.8 653.1C558.0 643.9 595.0 629.6 597.2 631.8C599.1 633.7 592.7 642.3 578.5 657.0C567.2 668.7 563.8 672.9 560.7 679.0C552.7 695.0 552.3 711.1 559.6 725.1C567.6 740.3 582.5 748.5 619.5 758.1C659.3 768.3 681.9 776.6 696.6 786.3C708.6 794.2 709.5 791.7 698.8 780.4C691.1 772.4 681.0 765.5 668.5 759.9C664.4 758.0 661.0 755.9 661.0 755.2C661.0 753.2 666.2 749.1 668.8 749.0C670.1 749.0 675.0 750.6 679.8 752.6C710.9 765.4 730.9 784.0 738.0 806.6C744.7 828.2 739.5 852.9 724.2 872.2C721.0 876.2 709.5 888.0 698.7 898.4C687.8 908.7 676.3 920.7 673.0 924.9C654.3 948.6 640.2 974.3 630.4 1002.2C627.2 1011.5 624.1 1019.0 623.5 1019.0C622.8 1019.0 621.9 1014.8 621.2 1008.8ZM599.1 983.7C555.5 914.2 497.0 868.5 421.5 845.2C374.5 830.7 316.8 829.0 279.7 841.2C273.8 843.1 272.8 843.2 271.6 841.9C270.8 841.1 267.4 833.1 264.0 824.0C236.5 751.5 208.2 684.8 181.5 629.4C176.1 618.1 172.6 609.7 173.0 609.0C173.9 607.5 176.5 608.3 204.5 618.7C298.2 653.6 364.3 689.1 424.0 736.6C446.1 754.3 478.9 787.6 496.9 810.9C499.3 814.0 503.1 818.8 505.4 821.5C510.1 827.1 538.5 864.6 552.6 884.0C569.7 907.4 586.8 934.8 593.2 949.0C602.4 969.3 609.6 994.0 606.2 994.0C605.8 994.0 602.6 989.4 599.1 983.7ZM937.5 843.7C929.8 838.0 918.3 829.5 912.0 824.9C885.0 805.3 882.0 802.8 882.0 800.4C882.0 799.1 884.3 793.6 887.1 788.3C890.0 782.9 895.7 771.8 900.0 763.5C904.2 755.2 910.2 743.8 913.2 738.0C916.3 732.2 925.4 714.7 933.5 699.0C956.2 655.1 966.1 636.7 968.4 634.2C969.5 632.9 978.6 626.6 988.5 620.3C998.4 613.9 1008.5 607.4 1010.9 605.8C1015.6 602.7 1019.6 602.4 1021.3 605.1C1022.1 606.3 1021.7 609.2 1019.8 615.6C1013.3 638.0 1002.9 674.7 999.6 686.5C997.7 693.6 992.9 711.0 989.1 725.0C981.2 753.5 980.3 757.0 966.7 810.0C961.4 830.6 956.6 848.9 956.2 850.5C954.8 855.6 952.4 854.7 937.5 843.7ZM524.0 826.9C520.7 822.4 518.0 817.7 518.0 816.6C518.0 807.5 527.3 787.3 535.6 778.2L540.7 772.5L546.6 773.8C555.8 775.7 556.1 776.6 550.1 784.0C540.4 796.2 534.6 810.3 533.2 825.9C532.8 831.0 532.0 834.5 531.3 834.7C530.6 835.0 527.4 831.4 524.0 826.9ZM681.8 743.8C679.2 742.7 676.9 741.3 676.7 740.6C676.4 740.0 678.0 736.5 680.2 733.0C690.2 716.5 691.3 696.8 683.2 680.5C678.9 671.9 675.0 666.9 661.5 653.0C646.3 637.4 643.5 632.7 643.6 623.5C643.7 619.1 644.4 616.1 646.3 612.3C652.1 601.1 649.1 587.8 638.5 577.5C627.9 567.1 611.5 560.3 569.0 548.5C550.8 543.5 532.2 535.2 523.4 528.2C504.9 513.6 502.5 483.9 518.0 460.8C534.0 436.8 562.9 417.3 611.9 397.3C652.3 380.8 659.7 377.6 673.0 371.2C712.4 352.3 736.1 332.7 747.7 309.6C760.4 284.4 756.2 258.2 736.2 236.8C727.2 227.3 720.2 222.4 706.4 215.8C668.0 197.8 613.1 201.3 589.2 223.5C585.7 226.7 581.7 231.4 580.3 233.9C565.0 260.4 546.7 277.8 516.5 294.4C503.9 301.3 498.0 303.9 488.8 306.4C483.5 307.9 483.0 308.3 482.0 311.8C480.5 317.5 480.9 324.9 483.1 331.0C486.3 339.9 486.4 340.0 484.7 340.0C483.9 340.0 481.1 337.7 478.6 334.9C473.2 328.9 470.0 320.0 470.0 310.8C470.0 306.3 469.4 303.8 467.8 301.2C466.1 298.4 465.5 295.6 465.2 288.9C464.0 264.5 483.0 226.5 507.7 204.0C527.9 185.6 560.9 168.7 591.3 161.0C638.1 149.3 690.3 154.3 732.7 174.5C784.5 199.3 815.0 241.3 815.0 287.9C815.0 342.2 777.4 384.6 702.5 415.0C695.4 417.9 674.0 425.5 655.0 432.0C604.2 449.3 594.4 453.5 579.8 464.2C570.9 470.7 564.8 477.7 560.8 485.8C554.6 498.4 556.8 513.8 566.4 524.8C574.6 534.1 590.5 541.3 620.0 549.0C653.1 557.7 669.0 563.5 681.1 571.6C706.8 588.6 710.1 617.7 689.0 640.4C685.9 643.7 682.8 647.5 682.1 648.7C679.5 653.7 681.2 658.6 688.1 666.6C698.6 678.8 702.3 688.7 702.4 705.0C702.5 720.4 698.3 733.5 690.5 742.9C687.4 746.5 687.9 746.4 681.8 743.8ZM1122.5 688.9C1113.2 685.1 1097.4 678.6 1087.5 674.6C1041.4 655.8 1024.4 648.6 1022.8 647.1C1021.2 645.6 1021.4 644.4 1026.9 626.6C1030.0 616.1 1033.2 607.4 1033.9 607.2C1034.5 607.0 1037.6 608.7 1040.8 611.1C1049.4 617.5 1084.5 645.6 1092.6 652.4C1096.5 655.8 1105.9 663.7 1113.5 670.0C1145.7 696.8 1145.0 696.1 1141.3 695.9C1140.3 695.9 1131.8 692.8 1122.5 688.9ZM578.4 625.9C578.2 625.4 577.8 620.7 577.7 615.3C577.4 602.8 575.1 597.3 567.1 589.7C559.4 582.4 557.9 581.7 535.8 576.1C500.2 567.0 482.4 560.7 457.0 548.1C401.5 520.5 361.6 481.8 337.0 431.5C328.9 415.1 322.2 396.4 323.7 394.9C324.4 394.2 327.8 394.8 334.4 396.9C354.8 403.4 398.2 409.0 452.0 412.0C470.8 413.0 526.3 415.0 537.8 415.0C542.3 415.0 544.0 415.4 544.0 416.4C544.0 417.1 541.2 419.9 537.8 422.6C507.2 446.4 490.9 476.1 494.9 501.1C497.4 516.8 502.8 526.6 514.3 536.1C524.8 544.9 535.2 549.5 568.7 560.0C580.6 563.7 587.7 568.2 593.2 575.5C598.3 582.2 600.1 587.8 600.7 598.5C601.2 607.2 601.1 607.7 597.8 614.0C594.9 619.8 593.9 620.8 589.0 623.2C582.8 626.2 579.2 627.1 578.4 625.9ZM744.0 610.9C727.2 609.8 726.0 609.3 726.0 604.1C726.0 601.9 726.4 599.9 726.9 599.6C727.3 599.3 735.3 598.8 744.6 598.5C785.1 597.0 811.8 592.7 847.0 581.8C868.8 575.1 880.3 570.5 899.1 560.9C968.6 525.4 1017.8 466.4 1041.3 390.0C1043.8 382.0 1046.1 373.6 1046.5 371.2C1047.2 367.0 1049.2 365.6 1050.4 368.6C1051.4 371.3 1051.0 381.1 1049.5 391.5C1044.3 426.1 1027.7 462.5 1001.4 497.2C991.5 510.3 965.8 536.0 951.5 547.1C893.7 592.3 817.0 615.9 744.0 610.9ZM707.9 575.8C701.0 562.9 683.6 551.8 656.5 543.0C616.7 530.2 604.7 523.6 598.0 511.0C595.6 506.5 596.2 496.2 599.2 489.7C607.2 472.6 631.1 458.1 691.7 433.4C699.0 430.4 711.6 424.9 719.7 421.2L734.5 414.3L753.0 413.6C818.1 411.2 875.2 404.6 899.9 396.8C905.5 395.0 909.6 394.2 910.1 394.7C911.4 396.0 905.2 413.4 898.6 427.3C879.0 468.7 844.9 506.0 802.0 533.2C781.7 546.1 761.7 555.6 737.5 563.9C720.6 569.8 718.5 570.8 714.6 574.9C711.1 578.6 709.5 578.8 707.9 575.8ZM482.5 398.9C413.9 396.8 342.0 390.1 326.2 384.2C320.7 382.1 319.5 379.1 323.2 376.6C332.6 370.4 387.4 365.6 477.0 363.0C529.8 361.5 662.0 361.7 662.0 363.3C662.0 364.7 646.4 371.8 622.9 381.0C614.4 384.3 600.5 390.0 592.0 393.5L576.5 400.0L541.5 399.8C522.2 399.8 495.7 399.3 482.5 398.9ZM768.4 396.9C767.6 395.6 767.3 396.0 778.0 387.9C782.7 384.4 790.5 377.7 795.3 373.1L804.2 364.6L811.3 364.8C846.8 366.0 890.1 370.4 904.9 374.4C919.1 378.3 915.2 383.7 896.0 387.0C892.4 387.6 887.0 388.5 884.0 389.0C869.2 391.6 854.1 393.1 813.0 396.0C781.7 398.3 769.4 398.5 768.4 396.9ZM522.3 250.1C526.1 246.6 528.8 241.2 529.2 236.4C529.5 233.0 529.2 232.5 527.3 232.2C524.7 231.8 516.3 236.0 513.3 239.2C508.5 244.4 505.2 256.2 508.2 257.3C510.0 257.9 518.9 253.4 522.3 250.1Z\"/><path fill=\"#A78448\" fill-rule=\"evenodd\" d=\"M604.1 897.9C590.4 895.2 578.3 889.0 568.1 879.4C541.0 853.9 540.2 813.4 566.3 786.7L573.0 779.7L579.8 780.3C591.1 781.4 629.7 788.6 641.8 791.9C664.9 798.2 679.6 805.4 688.0 814.6C693.7 820.8 695.0 824.4 695.0 834.3C695.0 864.8 672.4 890.5 639.4 897.5C631.9 899.1 611.4 899.3 604.1 897.9ZM633.0 752.4C630.0 751.6 624.6 750.6 621.0 750.0C589.5 744.9 572.0 731.2 568.8 709.2C567.7 701.9 567.8 700.5 569.9 692.9C573.0 681.2 575.4 677.6 591.0 661.5C608.9 642.9 611.7 637.3 614.0 614.4C615.6 598.4 612.6 585.0 605.0 574.8C603.4 572.5 602.0 570.2 602.0 569.8C602.0 566.6 616.9 573.5 624.5 580.2C627.1 582.5 630.2 586.7 632.1 590.5C635.6 597.7 635.7 600.8 632.5 615.0C628.9 631.3 633.3 642.6 649.6 658.7C667.5 676.5 672.1 683.7 674.1 697.5C676.7 715.0 667.9 733.3 652.2 743.0C649.6 744.6 645.8 747.7 643.8 750.0C641.8 752.2 639.8 754.0 639.3 753.9C638.9 753.8 636.0 753.2 633.0 752.4ZM1002.6 511.2C1002.3 510.8 1003.9 508.4 1006.0 505.9C1008.1 503.4 1014.1 495.3 1019.4 487.9C1036.1 464.5 1037.3 462.8 1045.5 454.6C1062.4 437.4 1085.7 426.1 1109.1 423.4C1116.6 422.6 1116.9 423.4 1113.5 433.6C1102.0 467.5 1082.6 489.4 1053.6 501.2C1036.4 508.3 1004.6 514.5 1002.6 511.2ZM961.3 508.2C959.7 507.0 950.2 489.9 946.4 481.2C939.6 465.4 937.7 455.6 937.6 437.5C937.6 421.1 938.6 413.5 943.1 396.8C946.3 385.0 946.6 385.0 957.3 396.1C972.0 411.3 978.5 424.4 981.2 444.0C983.4 460.6 979.2 480.1 969.4 499.1C965.0 507.6 963.3 509.5 961.3 508.2ZM1014.8 420.2C999.8 399.1 990.2 379.0 984.8 357.0C982.8 348.7 982.5 345.1 982.5 328.0C982.6 310.2 982.8 307.5 985.3 297.5C989.7 279.8 994.3 265.8 995.8 265.2C998.8 264.1 1012.5 282.3 1021.5 299.2C1036.6 327.6 1039.4 359.7 1029.9 397.5C1027.6 406.8 1022.4 421.9 1020.8 423.7C1019.1 425.7 1018.4 425.3 1014.8 420.2Z\"/></svg>";
 
@@ -3676,7 +5969,7 @@ function scrSwap(r, done, cancel) {
   screen([logo(), h("h2", {}, ["🔒 開發者版已經綁滿 " + max + " 台"]),
     h("div", { class: "scr-p" }, [h("p", {}, ["要在這台用開發者網頁，請選一台換掉。被換掉的那台馬上不能用開發者網頁（那台要再用，得重新綁定）。"]), h("p", {}, ["這台：", h("b", {}, [DEVLAB])])]),
     box, m, h("div", { class: "scr-b" }, [nb]),
-    h("p", { class: "lgfine" }, ["這個畫面 10 分鐘內有效。也可以先不換：在已經綁好的那台打開開發者網頁 →「管理」→「⑤ 我的裝置」刪掉一台，再回來綁定。"])], "swscr");
+    h("p", { class: "lgfine" }, ["這個畫面 10 分鐘內有效。也可以先不換：在已經綁好的那台打開開發者網頁 →「管理」→「④ 我的裝置」刪掉一台，再回來綁定。"])], "swscr");
 }
 function lgSave() { try { if (LG.code && !LG.dead) sessionStorage.setItem("hbpair", JSON.stringify({ x: X, code: LG.code, sec: LG.sec, ex: LG.ex, dev: LG.dev ? 1 : 0, pv: LG.pv || null })); else sessionStorage.removeItem("hbpair"); } catch (e) {  } }
 function lgLoad() {
@@ -3969,7 +6262,7 @@ function scrFirst(why, msg, r) {
   if (w0) lines.push(w0);
   if (why === "old") lines.push("這個短碼（或連結）打不開：可能是以前的固定短連結（已經停用），或沒有複製完整。回 LINE 按「🔗 外部連結」→「🔑 短碼」，拿一組新的。");
   if (why === "nocfg") lines.push("網站上還沒有放好 cfg.js（剛上傳的話，等 1～2 分鐘再重新整理）。還是不行，請跟開發者說。");
-  else if (!why && !canLogin() && !pcHasCfg()) lines.push("⚠️ 這個網站還沒有放好 cfg.js：電腦登入（短碼）暫時不能用，請跟開發者說（開發者：手冊網頁「👥 管理」→ ⑥ 下載 cfg.js，放到網站上）。在手機上：" + MSG_LINE);
+  else if (!why && !canLogin() && !pcHasCfg()) lines.push("⚠️ 這個網站還沒有放好 cfg.js：電腦登入（短碼）暫時不能用，請跟開發者說（開發者：手冊網頁「👥 管理」→ ⑤ 下載 cfg.js，放到網站上）。在手機上：" + MSG_LINE);
   if (why === "bad") lines.push("這個短碼跟網站上的 cfg.js 對不上（可能開發者剛換過設定，或沒有複製完整）：回 LINE 拿一組新的。");
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
@@ -4058,7 +6351,7 @@ function scrId(r) {
   [emp, nm].forEach(function (inp) { inp.onkeydown = function (ev) { if (ev.key === "Enter") b.onclick(); }; });
   var title = need === "join" ? "最後一步：員工編號＋姓名" : need === "every" ? "打員工編號＋姓名" : "補上員工編號＋姓名（只要一次）";
   var say = need === "join" ? ["✅ 已經從 LINE 確認是你了。第一次用藥戰手冊，請打員工編號和姓名（兩個都要填），送出申請。", "開發者核可以後，你的 LINE 會收到通知，就能看手冊（核可之前看不到任何內容）。"]
-    : need === "every" ? ["✅ 已經從 LINE 確認是你了。請打員工編號和姓名（要跟申請時填的一樣）。"]
+    : need === "every" ? ["請輸入【員工編號(第一個字母大寫)】和【姓名】"]
     : ["✅ 已經從 LINE 確認是你了。名單上還沒有你的員工編號或姓名，補上就能進去（只要一次）。"];
   screen([logo(), h("h2", {}, [title]), h("div", { class: "scr-p" }, say.map(function (l) { return h("p", {}, [l]); })),
     h("div", { class: "scr-form" }, [h("label", {}, [h("span", {}, ["員工編號（必填）"]), emp]), h("label", {}, [h("span", {}, ["姓名（必填）"]), nm])]),
@@ -4245,7 +6538,7 @@ function enterMain(r) {
   });
   var who = (ME.name || "") + (ME.emp ? "　" + ME.emp : "") + (IS_DEV && ME.name !== "開發者" ? "　（開發者）" : "");
   var hdr = h("header", { class: "hdr", id: "hdr" }, [h("div", { class: "hrow" }, [
-    h("button", { class: "hlogo", type: "button", title: "回首頁（手冊目錄）", onclick: function () { goHomeTab(); } }, [logoImg(), "藥戰手冊"]), IS_DEV ? tabs : null, h("span", { class: "sp" }),
+    h("button", { class: "hlogo", type: "button", title: "回首頁（手冊目錄）", onclick: function () { goHomeTab(); } }, [logoImg(), "藥戰手冊", IS_DEV ? h("span", { class: "devtag" }, ["Devs"]) : null]), IS_DEV ? tabs : null, h("span", { class: "sp" }),
     h("span", lgAttr({ class: "who" }), [who]), h("span", { class: "idle", id: "idle" }, [""]),
     btn("登出", function () { logout("out"); }, "sm")
   ])]);
@@ -4314,7 +6607,7 @@ function lgOutAsk() {
       }, function (e) { toast("❌ " + (e && e.code === "bad" ? OLD45 : e && e.message ? e.message : "沒有成功，請再按一次"), 6000); });
     } }, { label: "不要", cls: "sm" }] });
 }
-function abDot() { return h("span", { class: "abdot", title: "有新的「不正常的存取」紀錄（管理頁 ⑧）", hidden: !ABN }, [""]); }
+function abDot() { return h("span", { class: "abdot", title: "有新的「不正常的存取」紀錄（管理頁 ⑦）", hidden: !ABN }, [""]); }
 function abDots() { $$(".abdot").forEach(function (d) { d.hidden = !ABN; }); }
 function showTab(name) {
   if (!MAIN) return;
@@ -4527,7 +6820,15 @@ function backendCheck(cb) {
 }
 
 var DEV_TITLE = "PHFM Devs";
-function devTitle(on) { try { document.title = on ? DEV_TITLE : "404"; } catch (e) {  } }
+var DEV_ICON = "data:image/png;base64,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";   // 第 80 批：PHFM Devs 的分頁圖示（藥戰手冊 LOGO＋🛠）
+function devTitle(on) {
+  try { document.title = on ? DEV_TITLE : "404"; } catch (e) {  }
+  try {   // 第 80 批（使用者說「需要有圖」）：網址對了才放圖示；404 照舊沒有（看不出是藥戰手冊）
+    var ln = document.querySelector("link[rel~='icon']");
+    if (on) { if (!ln) { ln = document.createElement("link"); ln.rel = "icon"; document.head.appendChild(ln); } ln.type = "image/png"; ln.href = DEV_ICON; }
+    else if (ln && ln.href === DEV_ICON) ln.remove();
+  } catch (e) {  }
+}
 var NF_KIND = [
   { k: "pill", t: "這一頁被吃掉了" },
   { k: "fizz", t: "這一頁溶掉了" },
@@ -5730,7 +8031,7 @@ function pgStatus() {
 }
 function pgTool(pg, c, atHome, ta, pwb) {
   var hn = homeName();
-  var logo = h("button", { class: "pglogo", type: "button", title: "回首頁（" + hn + "）", "aria-label": "回首頁（" + hn + "）", onclick: goHomeTab }, [h("span", { class: "lgb" }, [logoImg()]), h("span", { class: "pl-t" }, ["藥戰手冊"])]);
+  var logo = h("button", { class: "pglogo", type: "button", title: "回首頁（" + hn + "）", "aria-label": "回首頁（" + hn + "）", onclick: goHomeTab }, [h("span", { class: "lgb" }, [logoImg()]), h("span", { class: "pl-t" }, ["藥戰手冊", IS_DEV ? h("span", { class: "devtag" }, ["Devs"]) : null])]);
   var l = h("div", { class: "pt-l" }, [
     logo,
     h("button", { class: "btn hfab pt-b", type: "button", "aria-label": "搜尋", title: "搜尋手冊", onclick: function () { homeSearch(pg); } }, ["🔍", h("span", { class: "bl" }, [" 搜尋"])]),
@@ -6001,7 +8302,7 @@ function drawHomeFull(root) {
     btn("🔍 搜尋", function () { homeSearch(stage); }, "hfab hs-go"),
     typeof openLib === "function" && (typeof libOn !== "function" || libOn()) ? btn("📁 照片、文件", function () { openLib(); }, "hfab hs-lb") : null
   ]);
-  var hbz = h("div", { class: "hbz" }, [h("h1", { class: "hlogo2" }, [h("span", { class: "lgb" }, [logoImg()]), h("span", { class: "sr" }, ["手冊目錄　"]), "藥戰手冊"]), hbt]);
+  var hbz = h("div", { class: "hbz" }, [h("h1", { class: "hlogo2" }, [h("span", { class: "lgb" }, [logoImg()]), h("span", { class: "sr" }, ["手冊目錄　"]), "藥戰手冊", IS_DEV ? h("span", { class: "devtag" }, ["Devs"]) : null]), hbt]);
   var hbOut = 0;
   hbz.addEventListener("mouseenter", function () { clearTimeout(hbOut); hbz.classList.add("hov"); });
   hbz.addEventListener("mouseleave", function () { clearTimeout(hbOut); hbOut = setTimeout(function () { hbz.classList.remove("hov"); }, 450); });
@@ -20769,16 +23070,13 @@ function buildAdminPane() {
   pane.innerHTML = "";
   pane.appendChild(h("p", { class: "sub" }, ["誰可以看、員工名單、誰看過什麼、保密開關，都在這一頁（只有開發者看得到）。也可以直接在 LINE 的審核卡按「核可」。"]));
   pane.appendChild(h("div", { class: "abnote", id: "abNote", role: "status", hidden: true }));
-  pane.appendChild(h("div", { class: "row" }, [
-    h("section", { class: "card adm" }, [h("h2", {}, ["① 誰可以看（核可名單）"]), h("div", { id: "userBox" }, [h("div", { class: "muted" }, ["載入中…"])])]),
-    h("section", { class: "card adm" }, [h("h2", {}, ["② 保密設定"]), h("div", { id: "cfgBox" })])
-  ]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["③ 員工名單（申請時比對：對得上的自動核可）"]), h("div", { id: "rsBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["④ 看過紀錄（最新的在最上面）"]), h("div", { id: "logBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["⑤ 🔒 我的裝置（開發者網頁綁定的）"]), h("div", { id: "devBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "pcSec", hidden: true }, [h("h2", {}, ["⑥ 🖥 電腦登入用的 cfg.js（要換一次）"]), h("div", { id: "pcBox" })]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["⑦ 📤 匯出給 Copilot（SharePoint 用）"]), h("div", { id: "exBox" })]));
-  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "abSec" }, [h("h2", {}, ["⑧ 🛡 不正常的存取（只記錄，不擋）"]), h("div", { id: "abBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
+  pane.appendChild(h("section", { class: "card adm", id: "ppSec" }, [h("h2", {}, ["① 人員（員工名單＋核可）"]), h("div", { id: "rsBox" }, [h("div", { class: "muted" }, ["載入中…"])]), h("div", { id: "userBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));   // 第 80 批：「誰可以看」「員工名單」合成一區
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["② 保密設定"]), h("div", { id: "cfgBox" })]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["③ 看過紀錄（最新的在最上面）"]), h("div", { id: "logBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["④ 🔒 我的裝置（開發者網頁綁定的）"]), h("div", { id: "devBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "pcSec", hidden: true }, [h("h2", {}, ["⑤ 🖥 電腦登入用的 cfg.js（要換一次）"]), h("div", { id: "pcBox" })]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px" }, [h("h2", {}, ["⑥ 📤 匯出給 Copilot（SharePoint 用）"]), h("div", { id: "exBox" })]));
+  pane.appendChild(h("section", { class: "card adm", style: "margin-top:16px", id: "abSec" }, [h("h2", {}, ["⑦ 🛡 不正常的存取（只記錄，不擋）"]), h("div", { id: "abBox" }, [h("div", { class: "muted" }, ["載入中…"])])]));
 }
 function pcLinkBase() { return location.origin + location.pathname; }
 function pcShow(on) { var sec = $("#pcSec"); if (sec) sec.hidden = !on; }
@@ -20806,7 +23104,7 @@ function pcGhCheck(k7, xx) {
 function pcDraw(box, r, blob, blob7, xx) {
   box.innerHTML = "";
   var on7 = !!r.on7, k7 = r.code7 || "";
-  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑥」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：短碼用\nwindow.HB_T9 = \"" + xenc(xx) + "\";\n";
+  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑤」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：短碼用\nwindow.HB_T9 = \"" + xenc(xx) + "\";\n";
   var dl = btn("⬇️ 下載 cfg.js", function () {
     try { var u = URL.createObjectURL(new Blob([cfg], { type: "text/javascript" })); if (typeof exDownload === "function") exDownload(u, "cfg.js"); else { var a = h("a", { href: u, download: "cfg.js" }); document.body.appendChild(a); a.click(); a.remove(); } setTimeout(function () { URL.revokeObjectURL(u); }, 2000); } catch (e) { toast("下載不了：請重新整理再試一次"); }
   }, "sm pri pcdl");
@@ -20826,7 +23124,7 @@ function pcDraw(box, r, blob, blob7, xx) {
       if (good === on7) { pcShow(!good && (none || !pcHidden())); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : none ? "❌ 網站上還是沒有 cfg.js（或還沒更新好）：確定傳上去了（檔名 cfg.js、跟 index.html 同一層），等 1～2 分鐘再按一次。" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
       call("hbEntry", [good ? 1 : -1]).then(function (r2) {
         if (!adOk(r2)) return;
-        toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的短碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的短碼先改回長的（照樣能用），請照 ⑥ 換一次");
+        toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的短碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的短碼先改回長的（照樣能用），請照 ⑤ 換一次");
         drawPcLink();
       }, function (e) { ckm.textContent = "❌ " + e.message; });
     });
@@ -20859,7 +23157,7 @@ function drawAbn() {
     note.innerHTML = ""; note.hidden = !nf;
     if (nf) {
       note.appendChild(h("span", {}, ["🛡 不正常的存取：", h("b", {}, ["有 " + nf + " 筆新的"]), "（只記錄，沒有擋）"]));
-      note.appendChild(btn("到 ⑧ 看", function () { var sec = $("#abSec"); if (sec) try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { sec.scrollIntoView(); } }, "sm"));
+      note.appendChild(btn("到 ⑦ 看", function () { var sec = $("#abSec"); if (sec) try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { sec.scrollIntoView(); } }, "sm"));
     }
   }
   box.appendChild(h("div", { class: "abhd" }, [h("span", { class: "abn" }, [nf ? "🆕 新的 " + nf + " 筆（上次打開管理頁以後記的）" : "沒有新的"]), r.seen ? h("span", { class: "muted" }, ["上次看：" + r.seen]) : null, btn("🔄 重新整理", abLoad, "sm")]));
@@ -20879,53 +23177,224 @@ function adOk(r) {
   return MAIN;
 }
 var ST_TXT = { ok: ["ok", "已核可"], wait: ["wait", "等審核"], no: ["no", "已拒絕"], off: ["gray", "已撤銷"], dev: ["ok", "開發者"] };
+// ═════ 第 80 批（使用者說「彙整一區，再加上「👑 設為開發者」」、「pdf 和 excel 的內容，只有員工編號和姓名」）═════
+// 「① 人員」＝員工名單＋核可名單合在一起：員工名單上的每一個人一列（還沒申請的也列出來）；申請了、名單上沒有的也列在裡面。
+// 規則（使用者說的）：看藥戰手冊一定要從 LINE 進去（同事之間分享、加入），所以這裡不放「加入」的 QR。
+// 📥 下載：現在看到的人（有篩選、搜尋的話只下載那些人），只有員工編號、姓名兩欄；Excel 的檔案資訊、PDF 的浮水印寫誰下載的、時間。
+var PP = { f: "all", q: "" };
+var PP_ST = { dev: ["dev", "👑 開發者"], ok: ["ok", "✅ 已核可"], wait: ["wait", "⏳ 等審核"], no: ["gray", "已拒絕"], off: ["gray", "已撤銷"], none: ["none", "— 還沒申請"] };
+function ppRows() {
+  var us = AD.users || [], rs = (AD.rs && AD.rs.rows) || [], map = {}, out = [];
+  rs.forEach(function (r) { var k = rsKey(rsEmp(r[0]) || String(r[0] || "")); if (!k || map[k]) return; map[k] = { emp: String(r[0] || ""), name: String(r[1] || ""), memo: r[2] || "", r: r, u: null }; out.push(map[k]); });
+  us.forEach(function (u) {
+    var k = rsKey(rsEmp(u.emp) || ""), hit = k && map[k];
+    if (hit && !hit.u) { hit.u = u; return; }
+    out.push({ emp: String(u.emp || ""), name: String(u.name || ""), memo: "", r: null, u: u });
+  });
+  var o = { wait: 0, dev: 1, ok: 2, off: 3, no: 3, none: 4 };
+  out.forEach(function (x) { x.st = x.u ? x.u.st : "none"; });
+  out.sort(function (a, b) { return (o[a.st] - o[b.st]) || String(a.emp).localeCompare(String(b.emp), "zh-Hant", { numeric: true }); });
+  return out;
+}
+function ppHit(x) {
+  var f = PP.f;
+  if (f === "ok" && !(x.st === "ok" || x.st === "dev")) return false;
+  if (f !== "all" && f !== "ok" && x.st !== f) return false;
+  var k = String(PP.q || "").replace(/\s+/g, "").toUpperCase();
+  return !k || (String(x.emp) + String(x.name) + String(x.u && x.u.lname || "")).replace(/\s+/g, "").toUpperCase().indexOf(k) >= 0;
+}
 function drawUsers() {
-  var box = $("#userBox"); if (!box) return; box.innerHTML = "";
-  var rows = (AD.users || []).slice().sort(function (a, b) { var o = { wait: 0, ok: 1, dev: 2, off: 3, no: 4 }; return (o[a.st] - o[b.st]) || String(b.at).localeCompare(String(a.at)); });
-  var nOk = rows.filter(function (u) { return u.st === "ok"; }).length, nW = rows.filter(function (u) { return u.st === "wait"; }).length;
-  var nDevRow = rows.filter(function (u) { return u.st === "dev"; }).length, nOff = Math.max(0, (AD.devs || 0) - nDevRow);
-  var nDel = rows.filter(function (u) { return u.st !== "dev"; }).length, clr = btn("🧹 清空", adClear, "sm bad adclr");
+  var box = $("#userBox"); if (!box) return;
+  var keepQ = $("#ppq"), hadFocus = keepQ && document.activeElement === keepQ;
+  box.innerHTML = "";
+  if (!AD.users) { box.appendChild(h("div", { class: "muted" }, ["載入中…"])); return; }
+  var all = ppRows(), cnt = function (k) { return all.filter(function (x) { return k === "all" || x.st === k || (k === "ok" && x.st === "dev"); }).length; };
+  var q = h("input", { class: "in ppq", id: "ppq", type: "search", placeholder: "🔍 搜尋員工編號或姓名", value: PP.q, "aria-label": "搜尋員工編號或姓名" });
+  q.oninput = function () { PP.q = q.value; paint(); };
+  var chips = h("div", { class: "ppchips", role: "tablist" });
+  [["all", "全部"], ["ok", "已核可"], ["wait", "等審核"], ["none", "還沒申請"], ["dev", "開發者"]].forEach(function (c) {
+    chips.appendChild(h("button", { class: "ppchip" + (PP.f === c[0] ? " on" : ""), type: "button", role: "tab", "aria-selected": String(PP.f === c[0]), onclick: function () { PP.f = c[0]; drawUsers(); } }, [c[1] + " " + cnt(c[0])]));
+  });
+  var nMatch = (AD.users || []).filter(function (u) { return u.st === "wait" && u.ck === "ok"; }).length;
+  var nDel = (AD.users || []).filter(function (u) { return u.st !== "dev"; }).length, clr = btn("🧹 清空核可名單", adClear, "sm bad adclr");
   if (!nDel) { clr.disabled = true; clr.title = "名單上沒有可以清的人（開發者不會清）"; }
-  box.appendChild(h("div", { style: "display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px" }, [
-    h("div", { class: "hint", style: "flex:1 1 240px;min-width:0;margin:0" }, ["核可 " + nOk + " 人、等審核 " + nW + " 人；開發者 " + AD.devs + " 位（固定可以看；已核可的人可以按「👑 設為開發者」，開發者那一列可以「取消開發者」）" + (nOff ? "，其中 " + nOff + " 位不在名單上（要取消，改藥戰手冊專案的指令碼屬性 DEV_USERS）" : "") + "。撤銷、拒絕＝從名單刪掉，要再看得重新申請。" +
-      (AD.cards ? "審核卡（有人申請、對不上員工名單）：LINE 只送給「📩 收審核卡」的開發者（現在 " + AD.cardN + " 位）；開發者那一列按一下可以切換。" : "")]),
-    clr]));
-  var nMatch = rows.filter(function (u) { return u.st === "wait" && u.ck === "ok"; }).length;
+  box.appendChild(h("div", { class: "ppbar" }, [q]));
+  box.appendChild(chips);
   if (nMatch) box.appendChild(h("div", { class: "acts", style: "margin:2px 0 8px" }, [btn("✅ 核可對得上員工名單的 " + nMatch + " 人", function (e) { adAuto(e.target, nMatch); }, "sm pri adauto")]));
-  if (!rows.length) { box.appendChild(h("div", { class: "muted", style: "padding:8px 0" }, ["還沒有人申請。同事在 LINE 的「藥戰手冊」打員工編號＋姓名（或在手冊網頁填），對不上員工名單的會出現在這裡等你核可。"])); return; }
-  var narrow = (box.clientWidth || window.innerWidth) < 560;
-  var tb = narrow ? h("div", { class: "ulist" }) : h("table", { class: "tbl" });
-  if (!narrow) tb.appendChild(h("tr", {}, ["名字", "員工代號", "狀態", "申請時間", "處理", "動作"].map(function (x) { return h("th", {}, [x]); })));
-  rows.forEach(function (u) {
-    var acts = [], set = function (act, label) { return btn(label, function (e) { adSet(u, act, e.target); }, act === "off" || act === "no" ? "sm bad" : act === "ok" ? "sm pri" : "sm"); };
-    var dv = function (on, label) { return btn(label, function (e) { adDev(u, on, e.target); }, on ? "sm addev" : "sm adundev"); };
+  var list = h("div", { class: "pplist", id: "ppList" }), more = h("div", { class: "muted", style: "font-size:12.5px;margin-top:6px" });
+  box.appendChild(list); box.appendChild(more);
+  box.appendChild(h("div", { class: "pphint" }, [h("span", { class: "hint", style: "margin:0;flex:1 1 240px" }, ["撤銷、拒絕＝從核可名單刪掉，要再看得重新申請。開發者最多 " + (AD.dmax || 10) + " 位（現在 " + (AD.devs || 0) + " 位）。" + (AD.cards ? "審核卡只送給「📩 收審核卡」的開發者（現在 " + AD.cardN + " 位）。" : "")]), clr]));
+  var paint = function () {
+    list.innerHTML = "";
+    var hit = all.filter(ppHit);
+    hit.slice(0, 400).forEach(function (x) { list.appendChild(ppRow(x)); });
+    if (!hit.length) list.appendChild(h("div", { class: "muted", style: "padding:10px 4px" }, [all.length ? "沒有符合的人" : "還沒有人。先上傳員工名單；同事在 LINE 的「藥戰手冊」打員工編號＋姓名申請，也會出現在這裡。"]));
+    more.textContent = hit.length > 400 ? "找到 " + hit.length + " 人，只列前 400 個（打字縮小範圍）" : (PP.q || PP.f !== "all" ? "找到 " + hit.length + " 人" : "");
+    AD.ppHit = hit;
+  };
+  paint();
+  if (hadFocus) try { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } catch (e) {  }
+}
+function ppRow(x) {
+  var u = x.u, acts = [];
+  var set = function (act, label) { return btn(label, function (e) { adSet(u, act, e.target); }, act === "off" || act === "no" ? "sm bad" : act === "ok" ? "sm pri" : "sm"); };
+  if (u) {
     if (u.st === "dev") {
-      if (u.me) acts.push(h("span", { class: "muted" }, ["你自己（固定可以看）"]));
-      else { var ub = dv(false, "取消開發者"); if ((AD.devs || 0) <= 1) { ub.disabled = true; ub.title = "至少要留一位開發者"; } acts.push(ub); }
+      if (u.me) acts.push(h("span", { class: "muted" }, ["你自己"]));
+      else { var ub = btn("取消開發者", function (e) { adDev(u, false, e.target); }, "sm adundev"); if ((AD.devs || 0) <= 1) { ub.disabled = true; ub.title = "至少要留一位開發者"; } acts.push(ub); }
       if (AD.cards) {
         var cb = btn(u.nc ? "🔕 不收審核卡" : "📩 收審核卡", function (e) { adCard(u, !!u.nc, e.target); }, "sm adcard" + (u.nc ? " off" : " on"));
-        cb.title = u.nc ? "現在：這位開發者的 LINE 不收審核卡。按一下＝改成收" : "現在：有人申請（對不上員工名單）時，這位開發者的 LINE 會收到審核卡。按一下＝改成不收";
         cb.setAttribute("aria-pressed", u.nc ? "false" : "true");
-        if (!u.nc && (AD.cardN || 0) <= 1) { cb.disabled = true; cb.title = "至少要留一位開發者收審核卡（不然新的申請沒人知道）"; }
+        if (!u.nc && (AD.cardN || 0) <= 1) { cb.disabled = true; cb.title = "至少要留一位開發者收審核卡"; }
         acts.push(cb);
       }
-    }
-    else if (u.st === "wait") { acts.push(set("ok", "核可")); acts.push(set("no", "拒絕")); }
-    else if (u.st === "ok") { acts.push(set("off", "撤銷")); var mb = dv(true, "👑 設為開發者"); if ((AD.devs || 0) >= (AD.dmax || 10)) { mb.disabled = true; mb.title = "開發者最多 " + (AD.dmax || 10) + " 位"; } acts.push(mb); }
+    } else if (u.st === "wait") { acts.push(set("ok", "核可")); acts.push(set("no", "拒絕")); }
+    else if (u.st === "ok") { acts.push(set("off", "撤銷")); var mb = btn("👑 設為開發者", function (e) { adDev(u, true, e.target); }, "sm addev"); if ((AD.devs || 0) >= (AD.dmax || 10)) { mb.disabled = true; mb.title = "開發者最多 " + (AD.dmax || 10) + " 位"; } acts.push(mb); }
     else acts.push(set("ok", "重新核可"));
-    var nm = (u.name || "（沒填）") + (u.lname ? "（LINE：" + u.lname + "）" : "");
-    var stt = ST_TXT[u.st] || ST_TXT.wait, done = u.done ? u.done + (u.by ? "　" + u.by : "") : "";
-    var rmk = adRmk(u);
-    if (narrow) {
-      tb.appendChild(h("div", { class: "urow", style: "display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;padding:10px 2px;border-bottom:1px solid #E5E9EE" }, [
-        h("div", { style: "flex:1 1 180px;min-width:0" }, [
-          h("div", {}, [h("b", {}, [nm]), "　" + (u.emp || "—") + "　", h("span", { class: "st " + stt[0] }, [stt[1]])]),
-          rmk,
-          h("div", { class: "muted", style: "font-size:12.5px;margin-top:2px" }, ["申請 " + (u.at || "—") + (done ? "｜處理 " + done : "")])]),
-        h("div", { class: "acts" }, acts)]));
-    } else tb.appendChild(h("tr", {}, [h("td", {}, [nm, rmk]), h("td", {}, [u.emp || "—"]), h("td", {}, [h("span", { class: "st " + stt[0] }, [stt[1]])]), h("td", { class: "muted" }, [u.at || ""]), h("td", { class: "muted" }, [done]), h("td", {}, [h("div", { class: "acts" }, acts)])]));
+  } else if (x.r) acts.push(btn("刪除", function (e) { rsDel(x.r, e.target); }, "sm bad rsdel"));
+  var st = PP_ST[x.st] || PP_ST.wait, nm = x.name || (u && u.lname) || "（沒填）";
+  var sub = [];
+  if (u && u.lname) sub.push("LINE：" + u.lname);
+  if (u && u.at) sub.push("申請 " + u.at);
+  if (x.memo) sub.push(x.memo);
+  return h("div", { class: "pprow" }, [
+    h("div", { class: "ppemp" }, [x.emp || "—"]),
+    h("div", { class: "ppnm" }, [h("b", {}, [nm]), sub.length ? h("small", {}, [sub.join("　")]) : null, u ? adRmk(u) : null]),
+    h("span", { class: "st " + st[0] }, [st[1]]),
+    h("div", { class: "acts" }, acts)]);
+}
+function ppWho() { return ((ME && ME.name) || "開發者") + (ME && ME.emp ? " " + ME.emp : "") + "・" + ppNow() + "・內部資料勿外傳"; }
+function ppNow() { var d = new Date(), z = function (n) { return ("0" + n).slice(-2); }; return d.getFullYear() + "/" + z(d.getMonth() + 1) + "/" + z(d.getDate()) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
+function ppList() { return (AD.ppHit || ppRows().filter(ppHit)).map(function (x) { return [x.emp, x.name || (x.u && x.u.lname) || ""]; }); }
+function ppZip(files) {
+  var enc = new TextEncoder(), CT = (function () { var t = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  var crc = function (a) { var c = 0xFFFFFFFF; for (var i = 0; i < a.length; i++) c = CT[(c ^ a[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  var le = function (v, n) { var a = new Uint8Array(n); for (var i = 0; i < n; i++) a[i] = (v >>> (8 * i)) & 255; return a; };
+  var parts = [], cd = [], off = 0, cdl = 0;
+  files.forEach(function (f) {
+    var nm = enc.encode(f.name), d = enc.encode(f.data), c = crc(d);
+    var lh = [le(0x04034b50, 4), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2), le(c, 4), le(d.length, 4), le(d.length, 4), le(nm.length, 2), le(0, 2), nm];
+    var ce = [le(0x02014b50, 4), le(20, 2), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2), le(c, 4), le(d.length, 4), le(d.length, 4), le(nm.length, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 4), le(off, 4), nm];
+    lh.forEach(function (x) { parts.push(x); off += x.length; }); parts.push(d); off += d.length;
+    ce.forEach(function (x) { cd.push(x); cdl += x.length; });
   });
-  box.appendChild(narrow ? tb : h("div", { class: "tscroll" }, [tb]));
+  return new Blob(parts.concat(cd, [le(0x06054b50, 4), le(0, 2), le(0, 2), le(files.length, 2), le(files.length, 2), le(cdl, 4), le(off, 4), le(0, 2)]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+function ppXlsx(rows) {
+  var esc = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); };
+  var hd = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  var cell = function (ref, v, s) { return '<c r="' + ref + '"' + (s ? ' s="1"' : "") + ' t="inlineStr"><is><t xml:space="preserve">' + esc(v) + "</t></is></c>"; };
+  var sd = '<row r="1">' + cell("A1", "員工編號", 1) + cell("B1", "姓名", 1) + "</row>";
+  rows.forEach(function (r, i) { var n = i + 2; sd += '<row r="' + n + '">' + cell("A" + n, r[0]) + cell("B" + n, r[1]) + "</row>"; });
+  return ppZip([
+    { name: "[Content_Types].xml", data: hd + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>' },
+    { name: "_rels/.rels", data: hd + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>' },
+    { name: "docProps/core.xml", data: hd + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>藥戰手冊 人員名單</dc:title><dc:creator>' + esc("藥戰手冊（" + ppWho() + "）") + "</dc:creator></cp:coreProperties>" },
+    { name: "xl/workbook.xml", data: hd + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="人員" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+    { name: "xl/_rels/workbook.xml.rels", data: hd + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+    { name: "xl/styles.xml", data: hd + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E7C66"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>' },
+    { name: "xl/worksheets/sheet1.xml", data: hd + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="2" width="16" customWidth="1"/></cols><sheetData>' + sd + "</sheetData></worksheet>" }]);
+}
+function ppPdf(rows) {   // 一頁一張圖（A4、150 dpi）：字是畫的（中文不用另外放字型），每一頁有浮水印
+  var W = 1240, H = 1754, M = 110, RH = 46, per = Math.floor((H - M * 2 - 150) / RH), pages = [], who = ppWho(), F = "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+  for (var p = 0; p === 0 || p * per < rows.length; p++) {
+    var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    var g = cv.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+    g.fillStyle = "#0E7C66"; g.font = "700 40px " + F; g.textBaseline = "middle"; g.fillText("藥戰手冊 人員名單", M, M + 10);
+    g.fillStyle = "#6B7785"; g.font = "24px " + F; g.fillText("第 " + (p + 1) + " 頁・共 " + rows.length + " 人", M, M + 60);
+    var y = M + 110, cw = [260, 420];
+    g.fillStyle = "#0E7C66"; g.fillRect(M, y, cw[0] + cw[1], RH);
+    g.fillStyle = "#fff"; g.font = "700 26px " + F; g.fillText("員工編號", M + 16, y + RH / 2); g.fillText("姓名", M + cw[0] + 16, y + RH / 2);
+    g.font = "26px " + F;
+    rows.slice(p * per, (p + 1) * per).forEach(function (r, i) {
+      var yy = y + RH * (i + 1);
+      g.fillStyle = "#1F2A2E"; g.fillText(String(r[0]), M + 16, yy + RH / 2); g.fillText(String(r[1]), M + cw[0] + 16, yy + RH / 2);
+      g.strokeStyle = "#E3E8EC"; g.lineWidth = 2; g.beginPath(); g.moveTo(M, yy + RH); g.lineTo(M + cw[0] + cw[1], yy + RH); g.stroke();
+    });
+    g.save(); g.fillStyle = "rgba(14,124,102,0.13)"; g.font = "700 30px " + F; g.translate(W / 2, H / 2); g.rotate(-0.42);
+    for (var yy2 = -H; yy2 < H; yy2 += 210) for (var xx = -W * 1.2; xx < W; xx += 760) g.fillText(who, xx + ((yy2 / 210) % 2 ? 380 : 0), yy2);
+    g.restore();
+    var b = atob(cv.toDataURL("image/jpeg", 0.86).split(",")[1]), a = new Uint8Array(b.length);
+    for (var k = 0; k < b.length; k++) a[k] = b.charCodeAt(k);
+    pages.push(a);
+  }
+  var enc = function (s) { var a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 255; return a; };
+  var out = [], len = 0, offs = [], add = function (x) { out.push(x); len += x.length; };
+  var obj = function (n, body, stream) { offs[n] = len; add(enc(n + " 0 obj\n" + body + (stream ? "\nstream\n" : "\nendobj\n"))); if (stream) { add(stream); add(enc("\nendstream\nendobj\n")); } };
+  add(enc("%PDF-1.4\n%âãÏÓ\n"));
+  var n = pages.length, kids = [];
+  for (var i = 0; i < n; i++) kids.push((3 + i * 3) + " 0 R");
+  obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  obj(2, "<< /Type /Pages /Count " + n + " /Kids [" + kids.join(" ") + "] >>");
+  pages.forEach(function (img, i) {
+    var pg = 3 + i * 3, im = pg + 1, ct = pg + 2, cs = enc("q 595.28 0 0 841.89 0 0 cm /Im0 Do Q");
+    obj(pg, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 " + im + " 0 R >> >> /Contents " + ct + " 0 R >>");
+    obj(im, "<< /Type /XObject /Subtype /Image /Width " + W + " /Height " + H + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + img.length + " >>", img);
+    obj(ct, "<< /Length " + cs.length + " >>", cs);
+  });
+  var x = len, tot = 3 + n * 3, xr = "xref\n0 " + tot + "\n0000000000 65535 f \n";
+  for (var j = 1; j < tot; j++) xr += ("0000000000" + offs[j]).slice(-10) + " 00000 n \n";
+  add(enc(xr + "trailer\n<< /Size " + tot + " /Root 1 0 R >>\nstartxref\n" + x + "\n%%EOF\n"));
+  return new Blob(out, { type: "application/pdf" });
+}
+function ppDl(kind) {
+  var rows = ppList();
+  if (!rows.length) { toast("沒有可以下載的人（看一下篩選、搜尋）"); return; }
+  try {
+    var blob = kind === "pdf" ? ppPdf(rows) : ppXlsx(rows), d = ppNow().replace(/[\/: ]/g, "").slice(0, 12);
+    var u = URL.createObjectURL(blob);
+    exDownload(u, "藥戰手冊人員名單-" + d + (kind === "pdf" ? ".pdf" : ".xlsx"));
+    setTimeout(function () { URL.revokeObjectURL(u); }, 4000);
+    toast("📥 下載 " + rows.length + " 人（員工編號、姓名）");
+    call("hbUsers", ["dl", kind === "pdf" ? "PDF" : "Excel", rows.length]).then(function () {  }, function () {  });
+  } catch (e) { toast("下載不了：" + (e && e.message || e)); }
+}
+// 👑 設為開發者（第 80 批）：開發者資格 QR → 他用自己的 LINE 掃 → 在 LINE 的「藥戰手冊」按確認 → 這裡自己更新
+function devQrFlow(u, el) {
+  if (AD.busy) return;
+  AD.busy = true; if (el) el.disabled = true;
+  call("hbDevQr", [u.uid]).then(function (r) {
+    AD.busy = false; if (el) el.disabled = false;
+    if (!adOk(r)) return;
+    var nm = r.nm || u.name || u.lname || u.emp || "這位", left = +r.ttl || 300, tm = 0, pt = 0, done = false, step = 1;
+    var bx = h("div", { class: "modal dvqm", role: "dialog", "aria-modal": "true" });
+    var steps = h("div", { class: "dvqsteps" }), st = h("p", { class: "dvqst", role: "status", "aria-live": "polite" }), cd = h("b", {}, ["5:00"]);
+    var img = h("img", { class: "dvqqr", alt: "開發者資格 QR（給" + nm + "用 LINE 掃）" });
+    try { var qq = window.YZQR(0, "M"); qq.addData(r.url); qq.make(); img.src = qq.createDataURL(6, 4); } catch (e) { img.alt = "QR 畫不出來"; }
+    var stop = function () { clearInterval(tm); clearInterval(pt); tm = pt = 0; };
+    var close = function () { stop(); bx.remove(); };
+    var drawSteps = function () { steps.innerHTML = ""; ["① 他用 LINE 掃", "② 他在 LINE 按確認", "③ 這裡自動更新"].forEach(function (t, i) { steps.appendChild(h("span", { class: i + 1 === step ? "on" : i + 1 < step ? "ok" : "" }, [t])); }); };
+    var qrBox = h("div", { class: "dvqbox" }, [img, h("div", { class: "dvqcd" }, ["剩 ", cd, "・只能用一次・別人的 LINE 掃了不算"])]);
+    var x = btn("關掉", close, "sm");
+    var dlg = h("div", { class: "dlg dvq" }, [h("div", { class: "dvqsite" }, [DEV_TITLE]), h("h3", {}, ["👑 開發者資格 QR：" + nm]), steps,
+      h("p", {}, ["請 ", h("b", {}, [nm]), " 用他自己的 LINE 掃這個 QR（LINE 主頁的掃描器）。"]), qrBox, st, h("div", { class: "dlg-b" }, [x])]);
+    var finish = function (t, good) { done = true; stop(); qrBox.hidden = true; st.textContent = t; st.className = "dvqst " + (good ? "good" : "bad"); };
+    drawSteps(); st.textContent = "⏳ 等他掃…";
+    bx.appendChild(dlg); document.body.appendChild(bx);
+    bx.onkeydown = function (e) { if (e.key === "Escape") close(); };
+    try { x.focus(); } catch (e) {  }
+    tm = setInterval(function () {
+      left--; cd.textContent = Math.max(0, Math.floor(left / 60)) + ":" + ("0" + Math.max(0, left % 60)).slice(-2);
+      if (left <= 0 && step < 2) finish("⌛ QR 過期了（超過 5 分鐘）：再按一次「👑 設為開發者」。", false);
+    }, 1000);
+    var busyQ = false;
+    pt = setInterval(function () {
+      if (done || busyQ || !bx.isConnected || document.visibilityState === "hidden") return;
+      busyQ = true;
+      call("hbDevQrSt", [r.code], { ms: 20000 }).then(function (s) {
+        busyQ = false; if (done || !bx.isConnected || !s) return;
+        if (s.st === "scan" && step < 2) { step = 2; drawSteps(); st.textContent = "📱 他掃了：等他在 LINE 的「藥戰手冊」按「確認」…"; }
+        else if (s.st === "ok") {
+          step = 3; drawSteps(); finish("✅ 「" + nm + "」已經是開發者了（他在 LINE 確認了；他和其他開發者都收到 LINE 通知）。", true);
+          call("hbUsers", []).then(function (x2) { if (!adOk(x2)) return; AD.users = x2.users || AD.users; AD.devs = x2.devs || AD.devs; adCardsOf(x2); drawUsers(); }, function () {  });
+          toast("👑 " + nm + " 已經是開發者了");
+        }
+        else if (s.st === "no") finish("他在 LINE 按了「不要」：沒有設為開發者。", false);
+        else if (s.st === "gone") finish("⌛ 這張 QR 過期了：再按一次「👑 設為開發者」。", false);
+      }, function () { busyQ = false; });
+    }, 3000);
+  }, function (e) { AD.busy = false; if (el) el.disabled = false; toast("❌ " + e.message); });
 }
 function adRmk(u) {
   if (u.st === "dev" || !u.ck) return null;
@@ -20980,6 +23449,7 @@ function adCard(u, on, el) {
 }
 function adDev(u, on, el) {
   if (AD.busy) return;
+  if (on) { devQrFlow(u, el); return; }   // 第 80 批：設為開發者＝開發者資格 QR（他用自己的 LINE 掃、在 LINE 按確認）
   var who = "「" + (u.name || u.lname || u.emp || "這位") + "」";
   var go = function () {
     AD.busy = true; if (el) el.disabled = true;
@@ -21156,15 +23626,16 @@ function drawRoster() {
   pasteBox.appendChild(h("div", { class: "acts", style: "margin-top:6px" }, [btn("👀 看一下", function () { if (!ta.value.trim()) { rsMsg("先貼上名單"); return; } rsPreview(rsPaste(ta.value), "貼上的"); }, "sm pri")]));
   var acts = [btn("📤 上傳 Excel／CSV", function () { file.click(); }, "sm pri"), btn("📋 貼上", function () { pasteBox.hidden = !pasteBox.hidden; if (!pasteBox.hidden) try { ta.focus(); } catch (e) {  } }, "sm"),
     btn("＋ 新增一位", function () { RS.addOn = !RS.addOn; drawRoster(); var f = $("#rsAddEmp"); if (f) try { f.focus(); } catch (e) {  } }, "sm rsaddbtn")];
-  if (rs.n) acts.push(btn(RS.listOn ? "收起名單" : "👀 看名單", function () { RS.listOn = !RS.listOn; drawRoster(); }, "sm"), btn("🧹 清空員工名單", rsClear, "sm bad"));
+  if (rs.n) acts.push(btn("🧹 清空員工名單", rsClear, "sm bad"));   // 第 80 批：名單直接列在下面（不用「👀 看名單」）
   box.appendChild(h("div", { class: "acts rsacts", style: "flex-wrap:wrap" }, acts));
   box.appendChild(file);
   if (RS.addOn) box.appendChild(rsAddBox());
   box.appendChild(pasteBox);
   box.appendChild(h("div", { id: "rsMsg", class: "scr-m", role: "status" }));
   box.appendChild(h("div", { id: "rsPrev" }));
-  if (RS.listOn && rs.n) box.appendChild(rsList(rs.rows || []));
-  box.appendChild(h("p", { class: "muted", style: "font-size:12.5px;margin:8px 0 0" }, ["Excel 的第一列可以是欄名（員工編號、姓名、備註…會自己認）；沒有欄名也可以（看內容猜：有數字的是員工編號）。舊的 .xls 請先另存成 .xlsx 或 CSV。比對只在藥戰手冊自己的後端做，不送給 AI。"]));
+  box.appendChild(h("p", { class: "muted", style: "font-size:12.5px;margin:4px 0 0" }, ["Excel 的第一列可以是欄名（員工編號、姓名、備註…會自己認）；沒有欄名也可以（看內容猜：有數字的是員工編號）。舊的 .xls 請先另存成 .xlsx 或 CSV。比對只在藥戰手冊自己的後端做，不送給 AI。"]));
+  box.appendChild(h("div", { class: "acts ppdl" }, [h("span", { class: "muted" }, ["📥 下載："]), btn("名單（Excel）", function () { ppDl("xlsx"); }, "sm ppdlx"), btn("名單（PDF）", function () { ppDl("pdf"); }, "sm ppdlp")]));   // 第 80 批：只有員工編號、姓名
+  if (AD.users) drawUsers();
 }
 function rsList(rows) {
   var wrap = h("div", { class: "rslist", style: "margin-top:10px" });
@@ -21196,7 +23667,7 @@ function rsAddBox() {
     h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" }, [emp, nm, memo]),
     h("div", { class: "acts", style: "margin-top:8px" }, [go, btn("收起來", function () { RS.addOn = false; drawRoster(); }, "sm")]),
     m,
-    h("div", { class: "muted", style: "font-size:12.5px" }, ["同一個員工編號已經在名單上：改成這次打的（姓名不一樣會先問你）。新增以後，用這個員工編號＋姓名申請的同事就會自動核可；已經在等審核、對得上的人，到「① 誰可以看」按「✅ 核可對得上員工名單的…」。"])]);
+    h("div", { class: "muted", style: "font-size:12.5px" }, ["同一個員工編號已經在名單上：改成這次打的（姓名不一樣會先問你）。新增以後，用這個員工編號＋姓名申請的同事就會自動核可；已經在等審核、對得上的人，在下面按「✅ 核可對得上員工名單的…」。"])]);
 }
 function rsAdd(emp, nm, memo, m, el, force) {
   if (AD.busy) return;
