@@ -5900,27 +5900,31 @@ function scrBind(msg, show) {
   scrBind6(msg);
 }
 function scrBind6(msg) {
-  var inp = h("input", { class: "in code6", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", placeholder: "6 位數碼", "aria-label": "綁定碼" });
+  var inp = h("input", { class: "in code6", inputmode: "text", autocomplete: "one-time-code", autocapitalize: "off", autocorrect: "off", spellcheck: "false", maxlength: "12", placeholder: "8 碼綁定碼", "aria-label": "綁定碼（大小寫要一樣）" });
   var m = h("div", { class: "scr-m", role: "status" });
   var b = btn("綁定", function () {
-    var c = inp.value.replace(/\s+/g, "");
-    if (!/^\d{6}$/.test(c)) { m.textContent = "請輸入 6 位數字"; return; }
+    var c = vcNorm(inp.value);
+    if (!/^[A-Za-z0-9]{8}$/.test(c)) { m.textContent = "請輸入 LINE 給的 8 碼綁定碼（大小寫要一樣）"; return; }
     b.disabled = true; m.textContent = "確認中…";
     call("appBind", [c, DEVLAB]).then(function (r) {
       b.disabled = false;
       if (r && r.ok) { m.textContent = "✅ 綁好了"; boot(); return; }
-      if (r && r.swap) { scrSwap(r, function () { boot(); }, function () { scrBind6("沒有換掉任何一台，這台還沒綁定。要綁的話，再到 LINE 打「開發者網頁 綁定」拿新的 6 位數碼。"); }); return; }
+      if (r && r.swap) { scrSwap(r, function () { boot(); }, function () { scrBind6("沒有換掉任何一台，這台還沒綁定。要綁的話，再到 LINE 打「開發者網頁 綁定」拿新的綁定碼。"); }); return; }
       m.textContent = "❌ " + (r && r.err || "沒綁成功，再試一次"); inp.value = "";
     }, function (e) { b.disabled = false; m.textContent = "❌ " + e.message; });
   }, "pri");
   inp.onkeydown = function (e) { if (e.key === "Enter") b.onclick(); };
-  screen([logo(), h("h2", {}, ["這一台還沒綁定（開發者）"]), h("div", { class: "scr-p" }, [h("p", {}, [msg || "開發者連結要先綁定這台裝置。"]), h("p", {}, ["在 LINE 打「開發者網頁 綁定」，把收到的 6 位數碼打在這裡。"])]), h("div", { class: "scr-b" }, [inp, b]), m]);
+  screen([logo(), h("h2", {}, ["這一台還沒綁定（開發者）"]), h("div", { class: "scr-p" }, [h("p", {}, [msg || "開發者連結要先綁定這台裝置。"]), h("p", {}, ["在 LINE 打「開發者網頁 綁定」，把收到的 8 碼綁定碼打在這裡（大小寫要一樣）。"])]), h("div", { class: "scr-b" }, [inp, b]), m]);
   try { inp.focus(); } catch (e) {  }
 }
 
 var KEEP_ED = null;
 var LG = { code: "", sec: "", ex: 0, dev: false, dead: false, seq: 0, tm: 0, busy: false, auto: 0, role: "", note: "", mode: "" };
-var LG_MIN = 5, LG_AUTO = 2, LG_AN = /^[A-HJ-NP-Za-kmnp-z2-9]{9}$/, LG_NUM = /^\d{6}$/;
+var LG_MIN = 5, LG_AUTO = 2, LG_AN = /^[A-HJ-NP-Za-kmnp-z2-9]{9}$/, LG_NUM = /^(\d{6}|[A-HJ-NP-Za-kmnp-z2-9]{9})$/;
+// 第 82 批：驗證碼＝注音亂碼＋英數（例 ji3、su3 混英數），大小寫有分。0 O o 只會有一種、1 l I 只會有一種（後端比對時算一樣）；
+//   登入驗證碼一定有這幾個其中一個＋一個大寫（短碼不會有）：打在同一個 4 格也分得開
+function vcNorm(raw) { return String(raw || "").replace(/[！-～]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 65248); }).replace(/[\s\u200b\-－–—_·.,，、]+/g, ""); }
+function vcOf(raw) { var v = vcNorm(raw); return /^(\d{6}|\d{12,16})$/.test(v) || (/^[A-Za-z0-9]{12,16}$/.test(v) && /[0Oo1lI]/.test(v) && /[A-Z]/.test(v)) ? v : ""; }
 function canLogin() { return !!(X && XRE.test(X) && DKX && window.fetch); }
 function lgLabel() {
   var u = navigator.userAgent || "";
@@ -6034,14 +6038,14 @@ function scrLoginCode(why, r) {
     done(false);
   };
   var live = function () {
-    var dev = LG.dev, c = LG.code, shown = dev ? c.slice(0, 3) + " " + c.slice(3) : c;
+    var dev = LG.dev, c = LG.code, num = /^\d{6}$/.test(c), shown = num ? c.slice(0, 3) + " " + c.slice(3) : c;
     var cb = h("button", { class: "lgcopy", type: "button" }, ["複製代號"]); cb.onclick = function () { copy(cb); };
     var again = h("button", { class: "lglink", type: "button" }, ["重新取得代號"]); again.onclick = function () { LG.auto = 0; start(""); };
     pair.innerHTML = "";
     if (dev) pair.appendChild(h("div", { class: "lgrole" }, ["🛠 開發者登入"]));
     if (LG.note) pair.appendChild(h("div", { class: "lgnote" }, [LG.note]));
-    pair.appendChild(h("div", { class: "lgst" }, ["① 請把這組", h("b", {}, [dev ? "開發者代號" : "代號"]), dev ? "打進藥戰手冊" : "複製到藥戰手冊"]));
-    pair.appendChild(h("div", { class: "lgcode" + (dev ? " num" : ""), id: "lgcode", role: "img", "aria-label": (dev ? "開發者代號 " : "代號 ") + c.split("").join(" ") }, [shown]));
+    pair.appendChild(h("div", { class: "lgst" }, ["① 請把這組", h("b", {}, [dev ? "開發者代號" : "代號"]), num ? "打進藥戰手冊" : "複製到藥戰手冊"]));
+    pair.appendChild(h("div", { class: "lgcode" + (num ? " num" : ""), id: "lgcode", role: "img", "aria-label": (dev ? "開發者代號 " : "代號 ") + c.split("").join(" ") }, [shown]));
     pair.appendChild(cb);
     pair.appendChild(h("div", { class: "lgmeta" }, [h("b", { id: "lgcd" }, [""]), " 內有效", h("br"), again]));
     wrap.hidden = false;
@@ -6092,12 +6096,12 @@ function scrLoginCode(why, r) {
   };
   var submit = function () {
     if (LG.busy) return;
-    var raw = boxes.get(), v = String(raw || "").replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 65248); }).replace(/[\s\-－–—]/g, "");
-    var sc = /^(\d{6}|\d{12,16})$/.test(v) ? "" : pcCodeOf(raw);
+    var raw = boxes.get(), v = vcOf(raw);
+    var sc = v ? "" : pcCodeOf(raw);
     if (sc) { PCLK = lkOf(sc); lkSave(PCLK); lgStop(); if (typeof pvClear === "function") pvClear(); scrLoginPc("", r); return; }
     if (!LG.code || LG.dead) { gone("這組代號已經不能用了"); return; }
     if (LG.ex <= Date.now()) { start("⌛ 超過 " + LG_MIN + " 分鐘沒有登入，已經換成新的代號：把這組新的再貼到 LINE 就好。"); return; }
-    if (!/^(\d{6}|\d{12,16})$/.test(v)) { msg.textContent = "請輸入 LINE 回給你的驗證碼"; boxes.focus(); return; }
+    if (!v) { msg.textContent = "請輸入 LINE 回給你的驗證碼（大小寫要一樣）"; boxes.focus(); return; }
     if (LG.dev && v === LG.code) { msg.textContent = "這裡要打 LINE 回給你的驗證碼，不是上面的開發者代號。"; return; }
     LG.busy = true; go.disabled = true; boxesRO(true); msg.textContent = "確認中…";
     var slow = setTimeout(function () { if (LG.busy && pair.isConnected) msg.textContent = "確認中…後端剛睡醒的時候要等 30 秒左右，請先別關掉、也不用再按。"; }, 6000);
@@ -6117,7 +6121,7 @@ function scrLoginCode(why, r) {
       if (!pair.isConnected || P !== LG.sec) return;
       if (x && x.dead) { gone("這組代號已經用不了了（打錯太多次）"); return; }
       if (x && x.gone) { if (x.full) gone(String(x.err || "開發者版名額滿了").replace(/^🔒\s*/, "")); else gone("這組代號已經不能用了（過期、用掉了，或已經作廢）"); return; }
-      if (x && x.wait) { msg.textContent = "⏳ LINE 還沒收到這組代號。到 LINE 的「藥戰手冊」" + (LG.dev ? "打 " : "貼上 ") + LG.code + "，拿到驗證碼再回來輸入。"; return; }
+      if (x && x.wait) { msg.textContent = "⏳ LINE 還沒收到這組代號。到 LINE 的「藥戰手冊」" + (/^\d{6}$/.test(LG.code) ? "打 " : "貼上 ") + LG.code + "，拿到驗證碼再回來輸入。"; return; }
       if (x && x.bad) { msg.textContent = "❌ 驗證碼不對，再輸入一次。（要照 LINE 卡片上現在這一張；不確定就按「重新取得代號」換新的一組）"; boxes.clear(); boxes.focus(); return; }
       msg.textContent = "❌ " + String(x && x.err || "沒登入成功，再試一次").slice(0, 200);
     }, function (e) {
@@ -6199,7 +6203,7 @@ function pcBoxes(onEnter, id0) {
     return k;
   };
   var fire = function (i, v) {
-    var full = pcCodeOf(v) || (/^\d{12,16}$/.test(clean(v)) ? clean(v) : "");
+    var full = pcCodeOf(v) || vcOf(v);
     if (full) { B.set(full); focusAt(PCC_N - 1); return; }
     put(i, clean(v));
     if (grow()) { focusAt(next(0)); return; }
@@ -6999,8 +7003,8 @@ function scrPvStep(o) {
   var sub = function () {
     if (busy) return;
     if (!sec) { start(""); return; }
-    var v = String(boxes.get() || "").replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 65248); }).replace(/[\s\-－–—]/g, "");
-    if (!/^\d{12,16}$/.test(v)) { msg.textContent = "請輸入 LINE 給你的驗證碼"; boxes.focus(); return; }
+    var v = vcOf(boxes.get());
+    if (!v || /^\d{6}$/.test(v)) { msg.textContent = "請輸入 LINE 給你的驗證碼（大小寫要一樣）"; boxes.focus(); return; }
     busy = true; ro(true); msg.textContent = "確認中…";
     var P = sec;
     o.chk(P, v).then(function (x) {
