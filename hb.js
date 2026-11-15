@@ -5673,10 +5673,19 @@ var HP = hashParams(), XRE = /^[A-Za-z0-9_-]{20,120}$/, TRE = /^[0-9a-f]{32}$/;
 var X = HP.x || "", T = HP.dev || HP.app || "", FROMLINK = !!T, FROMSAVED = false;
 var TICKET = /^[0-9a-z]{6,11}\.[0-9a-f]{24}$/.test(HP.k || "") ? HP.k : "";
 var DQ = /^[A-HJ-NP-Za-km-z2-9]{10}$/.test(HP.dq || "") ? HP.dq : "";   // 第 81 批：掃了開發者資格 QR
-function keyLoad() { try { var o = JSON.parse(localStorage.getItem("hbk") || "null"); if (o && XRE.test(String(o.x || "")) && TRE.test(String(o.t || ""))) return o; } catch (e) {  } return null; }
+// 第 81 批（使用者說「我沒有輸入開發模式，應該給我一般網頁」）：開發者的鑰匙只記在這個分頁（sessionStorage）；
+//   一般打開網站（外部連結、記住的鑰匙）＝一般網頁。要開發者模式：LINE 的開發者連結、「開發」入口。
+function keyLoad() {
+  var ok = function (o) { return o && XRE.test(String(o.x || "")) && TRE.test(String(o.t || "")) ? o : null; };
+  try { var s = ok(JSON.parse(sessionStorage.getItem("hbkd") || "null")); if (s) { s.src = "s"; return s; } } catch (e) {  }
+  try { var o = ok(JSON.parse(localStorage.getItem("hbk") || "null")); if (o) { o.src = "l"; return o; } } catch (e) {  }
+  return null;
+}
+function devHere() { return FROMLINK || !!(FROMSAVED && SAVED && SAVED.src === "s"); }   // 這個分頁是用開發者的方式進來的
+function keyDev() { try { sessionStorage.setItem("hbkd", JSON.stringify({ x: X, t: T })); var o = JSON.parse(localStorage.getItem("hbk") || "null"); if (o && o.t === T) localStorage.removeItem("hbk"); } catch (e) {  } }
 function bxLoad() { try { var v = localStorage.getItem("hbx"); if (XRE.test(v || "")) return v; } catch (e) {  } return ""; }
 function keySave() { if (ONCE || !XRE.test(X) || !TRE.test(T)) return; try { localStorage.setItem("hbk", JSON.stringify({ x: X, t: T })); localStorage.setItem("hbx", X); } catch (e) {  } }
-function keyDrop() { try { var o = keyLoad(); if (o && o.x === X && o.t === T) localStorage.removeItem("hbk"); } catch (e) {  } if (typeof offClear === "function") offClear(); }
+function keyDrop() { try { var o = JSON.parse(localStorage.getItem("hbk") || "null"); if (o && o.x === X && o.t === T) localStorage.removeItem("hbk"); var d = JSON.parse(sessionStorage.getItem("hbkd") || "null"); if (d && d.t === T) sessionStorage.removeItem("hbkd"); } catch (e) {  } if (typeof offClear === "function") offClear(); }
 function bxDrop() { try { if (localStorage.getItem("hbx") === X) localStorage.removeItem("hbx"); var o = keyLoad(); if (o && o.x === X) localStorage.removeItem("hbk"); } catch (e) {  } if (typeof offClearAll === "function") offClearAll(); }
 function xdec(c) {
   var m = /^1\.([0-9a-z]{8})\.([A-Za-z0-9_-]{20,240})$/.exec(String(c || "")); if (!m) return "";
@@ -5887,7 +5896,7 @@ function stop(msg, code, need) {
   scrMsg(code === "down" ? "現在連不到後端" : "沒辦法打開", [msg || "後端沒有回應。"], [reloadBtn()]);
 }
 function scrBind(msg, show) {
-  if (canLogin()) { LG.role = ""; LG.wd = true; scrLoginCode(show && msg ? "again" : "", show && msg ? { err: msg } : {}); return; }
+  if (canLogin()) { LG.role = ""; LG.wd = devHere(); scrLoginCode(show && msg ? "again" : "", show && msg ? { err: msg } : {}); return; }
   scrBind6(msg);
 }
 function scrBind6(msg) {
@@ -6491,7 +6500,8 @@ function onBoot(r) {
   if (st === "no") { scrMsg("沒有通過審核", ["看不到藥戰手冊的內容。有疑問請找開發者。"]); return; }
   if (st === "off") { scrMsg("權限已經撤銷", ["你的藥戰手冊權限已經被撤銷，看不到內容了。有疑問請找開發者。"]); return; }
   if (st === "nodk") { scrMsg("這個瀏覽器不能用", [MSG_NODK]); return; }
-  if (st === "lock" || st === "none") { ME = r.me || ME; if (r.cfg) { CFG = r.cfg; applyCfg(); } LG.role = ""; LG.wd = !!(r.me && r.me.dev); scrLogin(r.bad ? "bad" : "", r); return; }
+  if (st === "lock" || st === "none") { ME = r.me || ME; if (r.cfg) { CFG = r.cfg; applyCfg(); } LG.role = ""; LG.wd = !!(r.me && r.me.dev) && devHere(); scrLogin(r.bad ? "bad" : "", r); return; }
+  if (st === "dev" && FROMSAVED && !devHere()) { keyDrop(); T = ""; FROMSAVED = false; ME = {}; LG.role = ""; LG.wd = false; SESS++; scrLogin(""); return; }   // 第 81 批：記住的開發者鑰匙不自己打開開發者模式
   if ((st === "ok" || st === "dev") && r.data) { bootDone(function () { enterMain(r); }); return; }
   scrMsg("沒辦法打開", ["看不懂後端的回應（" + String(st) + "）。"], [reloadBtn()]);
 }
@@ -6525,6 +6535,7 @@ function enterMain(r) {
   LG.wd = false;
   OUTED = false;
   HB = r.data; CFG = r.cfg || CFG || {}; ME = r.me || {}; IS_DEV = r.st === "dev"; if (r.v) BACKV = String(r.v);
+  if (IS_DEV && !ONCE) keyDev();
   if (typeof offSave === "function") { if (r.cached) NET.cached = 1; else { NET.cached = 0; NET.lastSave = 0; offSave(r); } }
   V3 = +r.v3 || 0;
   YZ_CLOUD = bk55Ok();
