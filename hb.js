@@ -6122,7 +6122,7 @@ function scrLoginCode(why, r) {
       if (x && x.dead) { gone("這組代號已經用不了了（打錯太多次）"); return; }
       if (x && x.gone) { if (x.full) gone(String(x.err || "開發者版名額滿了").replace(/^🔒\s*/, "")); else gone("這組代號已經不能用了（過期、用掉了，或已經作廢）"); return; }
       if (x && x.wait) { msg.textContent = "⏳ LINE 還沒收到這組代號。到 LINE 的「藥戰手冊」" + (/^\d{6}$/.test(LG.code) ? "打 " : "貼上 ") + LG.code + "，拿到驗證碼再回來輸入。"; return; }
-      if (x && x.bad) { msg.textContent = "❌ 驗證碼不對，再輸入一次。（要照 LINE 卡片上現在這一張；不確定就按「重新取得代號」換新的一組）"; boxes.clear(); boxes.focus(); return; }
+      if (x && x.bad) { msg.textContent = "❌ 驗證碼不對：要照 LINE 卡片打，大小寫也要一樣。（不確定就按「重新取得代號」換新的一組）"; boxes.clear(); boxes.focus(); return; }
       msg.textContent = "❌ " + String(x && x.err || "沒登入成功，再試一次").slice(0, 200);
     }, function (e) {
       clearTimeout(slow); LG.busy = false; go.disabled = false; boxesRO(false);
@@ -6138,7 +6138,7 @@ function scrLoginCode(why, r) {
 document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") LG.auto = 0; });
 
 var PC = { sec: "", ex: 0, busy: false, tm: 0, seq: 0, e: "", n: "" };
-var MSG_PC = "在電腦（或別的瀏覽器）上：打開 LINE 的「藥戰手冊」，按下面那排的「🔗 外部連結」→「🌐 網址」→「📋 自動複製」，貼到瀏覽器打開；網頁會請你填「🔑 短碼」（看著卡片上的大字打進 4 格，或貼上），再打員工編號＋姓名。";
+var MSG_PC = "在電腦（或別的瀏覽器）上：打開 LINE 的「藥戰手冊」，按下面那排的「🔗 外部連結」→「🌐 網址」→「📋 自動複製」，貼到瀏覽器打開；網頁會請你填「🔑 驗證碼」（看著卡片上的大字打進 4 格，或貼上），再打員工編號＋姓名。";
 function pcStop() { clearInterval(PC.tm); PC.tm = 0; }
 function pcSave() { try { if (PC.sec) sessionStorage.setItem("hbpc", JSON.stringify({ x: X, sec: PC.sec, ex: PC.ex })); else sessionStorage.removeItem("hbpc"); } catch (e) {  } }
 function pcLoad() {
@@ -6210,7 +6210,7 @@ function pcBoxes(onEnter, id0) {
     focusAt(next(i));
   };
   for (var i = 0; i < PCC_N; i++) (function (i) {
-    var inp = h("input", { class: "in pcc", type: "text", inputmode: "text", autocomplete: i ? "off" : "one-time-code", autocapitalize: "off", autocorrect: "off", spellcheck: "false", "aria-label": "短碼第 " + (i + 1) + " 格（照卡片上的第 " + (i + 1) + " 組）", "data-i": String(i) });
+    var inp = h("input", { class: "in pcc", type: "text", inputmode: "text", autocomplete: i ? "off" : "one-time-code", autocapitalize: "off", autocorrect: "off", spellcheck: "false", "aria-label": "驗證碼第 " + (i + 1) + " 格（照卡片上的第 " + (i + 1) + " 組）", "data-i": String(i) });
     if (!i) inp.id = id0 || "pclin";
     inp.oninput = function () {
       var v = inp.value;
@@ -6235,7 +6235,7 @@ function pcBoxes(onEnter, id0) {
     if (i) kids.push(h("span", { class: "pcc-d", "aria-hidden": "true" }, ["-"]));
     kids.push(inp);
   })(i);
-  B.el = h("div", { class: "pcc4", role: "group", "aria-label": "隨機驗證短碼（4 格）" }, kids);
+  B.el = h("div", { class: "pcc4", role: "group", "aria-label": "驗證碼（4 格）" }, kids);
   look();
   B.get = function () { return all(); };
   B.set = function (code) {
@@ -6251,7 +6251,7 @@ function pcBoxes(onEnter, id0) {
 function pcHasCfg() { try { return typeof window.HB_XC === "string" || typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
 function pcHas7() { try { return typeof window.HB_XC7 === "string"; } catch (e) { return false; } }
 function pcFine() {
-  return h("p", { class: "lgfine" }, ["短碼只能用一次；不要給任何人。"]);
+  return h("p", { class: "lgfine" }, ["驗證碼只能用一次；不要給任何人。"]);
 }
 function scrFirst(why, msg, r) {
   lgStop(); pcStop();
@@ -6261,7 +6261,7 @@ function scrFirst(why, msg, r) {
   var next = function () {
     var raw = boxes.get(), code = pcCodeOf(raw);
     if (!code) {
-      m.textContent = raw ? "短碼還沒打完（或打錯了）：照 LINE 卡片上的 4 組打（卡片上一組幾個字，這裡一格就打幾個字），大小寫要跟卡片一樣（只有英文、數字；沒有 0、O、1、l、I）。打完一組按空白鍵跳下一格；可以複製的話，按「📋 自動複製」貼在第一格會自動分好。" : "這不像 LINE 回的短碼：回 LINE 按「🔗 外部連結」→「🔑 短碼」，看著卡片上的大字打進 4 格，或按「📋 自動複製」整組貼上來。";
+      m.textContent = raw ? "驗證碼還沒打完（或打錯了）：照 LINE 卡片上的 4 組打（卡片上一組幾個字，這裡一格就打幾個字），大小寫要跟卡片一樣（只有英文、數字；沒有 0、O、1、l、I）。打完一組按空白鍵跳下一格；可以複製的話，按「📋 自動複製」貼在第一格會自動分好。" : "這不像 LINE 回的驗證碼：回 LINE 按「🔗 外部連結」→「🔑 驗證碼」，看著卡片上的大字打進 4 格，或按「📋 自動複製」整組貼上來。";
       boxes.focus(); return;
     }
     PCLK = lkOf(code); lkSave(PCLK);
@@ -6275,14 +6275,14 @@ function scrFirst(why, msg, r) {
   var lines = [];
   var w0 = r ? loginWhy(r.why || "", r, true) : "";
   if (w0) lines.push(w0);
-  if (why === "old") lines.push("這個短碼（或連結）打不開：可能是以前的固定短連結（已經停用），或沒有複製完整。回 LINE 按「🔗 外部連結」→「🔑 短碼」，拿一組新的。");
+  if (why === "old") lines.push("這個驗證碼（或連結）打不開：可能是以前的固定短連結（已經停用），或沒有複製完整。回 LINE 按「🔗 外部連結」→「🔑 驗證碼」，拿一組新的。");
   if (why === "nocfg") lines.push("網站上還沒有放好 cfg.js（剛上傳的話，等 1～2 分鐘再重新整理）。還是不行，請跟開發者說。");
-  else if (!why && !canLogin() && !pcHasCfg()) lines.push("⚠️ 這個網站還沒有放好 cfg.js：電腦登入（短碼）暫時不能用，請跟開發者說（開發者：手冊網頁「👥 管理」→ ⑤ 下載 cfg.js，放到網站上）。在手機上：" + MSG_LINE);
-  if (why === "bad") lines.push("這個短碼跟網站上的 cfg.js 對不上（可能開發者剛換過設定，或沒有複製完整）：回 LINE 拿一組新的。");
+  else if (!why && !canLogin() && !pcHasCfg()) lines.push("⚠️ 這個網站還沒有放好 cfg.js：電腦登入（驗證碼）暫時不能用，請跟開發者說（開發者：手冊網頁「👥 管理」→ ⑤ 下載 cfg.js，放到網站上）。在手機上：" + MSG_LINE);
+  if (why === "bad") lines.push("這個驗證碼跟網站上的 cfg.js 對不上（可能開發者剛換過設定，或沒有複製完整）：回 LINE 拿一組新的。");
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
     h("div", { class: "pcbox", id: "pcstep0" }, [
-      h("div", { class: "lgst" }, ["① 請輸入", h("b", {}, ["短碼"]), "（LINE「🔗 外部連結」→「🔑 短碼」）"]),
+      h("div", { class: "lgst" }, ["① 請輸入", h("b", {}, ["驗證碼"]), "（LINE「🔗 外部連結」→「🔑 驗證碼」）"]),
       boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), m,
       h("div", { class: "lgst2 pcnext" }, ["② 員工編號和姓名"])]),
     pcFine(),
@@ -6302,9 +6302,9 @@ function scrLoginPc(why, r) {
   var go = h("button", { class: "btn pri lggo", type: "button", id: "pcgo" }, ["登入"]);
   pcRemDrop();
   var m = h("div", { class: "scr-m lgm", role: "status", "aria-live": "polite" });
-  var again = h("button", { class: "lglink", type: "button", id: "pcre" }, ["換一組短碼"]);
+  var again = h("button", { class: "lglink", type: "button", id: "pcre" }, ["換一組驗證碼"]);
   var step1 = h("div", { class: "pcbox", id: "pcstep1" }, [
-    h("div", { class: "pclhint", id: "pclhint" }, ["✅ 短碼填好了　", again]),
+    h("div", { class: "pclhint", id: "pclhint" }, ["✅ 驗證碼填好了　", again]),
     h("div", { class: "lgst" }, ["② 請輸入", h("b", {}, ["員工編號"]), "和", h("b", {}, ["姓名"])]),
     h("div", { class: "scr-form" }, [h("label", {}, [h("span", {}, ["員工編號"]), emp]), h("label", {}, [h("span", {}, ["姓名"]), nm])]),
     h("div", { class: "scr-b" }, [go]), m]);
@@ -6330,8 +6330,8 @@ function scrLoginPc(why, r) {
       clearTimeout(slow); PC.busy = false; go.disabled = false;
       if (!alive()) return;
       if (x && TRE.test(String(x.t || ""))) { done(x); return; }
-      if (x && x.lk) { back("❌ " + String(x.err || "短碼不對、過期或用過了：回 LINE 拿一組新的。").slice(0, 260)); return; }
-      if (x && x.need === "line") { back("❌ 短碼不對、或已經過期（超過 10 分鐘）：回 LINE 按「🔗 外部連結」→「🔑 短碼」，拿一組新的。"); return; }
+      if (x && x.lk) { back("❌ " + String(x.err || "驗證碼不對、過期或用過了：回 LINE 拿一組新的。").slice(0, 260)); return; }
+      if (x && x.need === "line") { back("❌ 驗證碼不對、或已經過期（超過 10 分鐘）：回 LINE 按「🔗 外部連結」→「🔑 驗證碼」，拿一組新的。"); return; }
       if (x && x.st && !x.err) { onBoot(x); return; }
       m.textContent = (x && x.wait ? "⏳ " : "❌ ") + String(x && x.err || "沒登入成功，再試一次").slice(0, 260);
       if (x && x.field) focus(x.field === "name" ? nm : emp);
@@ -23136,14 +23136,14 @@ function pcGhCheck(k7, xx) {
 function pcDraw(box, r, blob, blob7, xx) {
   box.innerHTML = "";
   var on7 = !!r.on7, k7 = r.code7 || "";
-  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑤」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：短碼用\nwindow.HB_T9 = \"" + xenc(xx) + "\";\n";
+  var cfg = "// 藥戰手冊：後端位置（加密）。放在 hb.html 同一層。別人看不出位置；換部署再到管理頁「⑤」重做一次。\nwindow.HB_XC = \"" + blob + "\";\nwindow.HB_XC7 = \"" + blob7 + "\";   // 第 43 批：驗證碼用\nwindow.HB_T9 = \"" + xenc(xx) + "\";\n";
   var dl = btn("⬇️ 下載 cfg.js", function () {
     try { var u = URL.createObjectURL(new Blob([cfg], { type: "text/javascript" })); if (typeof exDownload === "function") exDownload(u, "cfg.js"); else { var a = h("a", { href: u, download: "cfg.js" }); document.body.appendChild(a); a.click(); a.remove(); } setTimeout(function () { URL.revokeObjectURL(u); }, 2000); } catch (e) { toast("下載不了：請重新整理再試一次"); }
   }, "sm pri pcdl");
   var ckm = h("span", { class: "hint", id: "pcckm", role: "status", "aria-live": "polite" }, [""]);
   var ck = btn("🔄 檢查 GitHub 上的 cfg.js", function () { pcCheck(true); }, "sm pcck");
   var hd = btn("🙈 這段先收起來（30 天）", function () { try { localStorage.setItem("yz_pc_hide", String(Date.now())); } catch (e) {  } pcShow(false); toast("收起來了：這台 30 天內不再出現（cfg.js 換好了本來就會自己消失）"); }, "sm pchide");
-  var st = h("p", { class: "pcst warn", id: "pcst" }, ["⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。"]);
+  var st = h("p", { class: "pcst warn", id: "pcst" }, ["⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的驗證碼比較長（照樣能用）；換好以後變短，這一段就不再出現。"]);
   box.appendChild(st);
   box.appendChild(h("div", { class: "pcurlrow" }, [dl, ck, hd, ckm]));
   var pcCheck = function (say) {
@@ -23152,11 +23152,11 @@ function pcDraw(box, r, blob, blob7, xx) {
       ck.disabled = false;
       var none = good === "none"; if (none) good = false;
       hd.hidden = none;
-      st.textContent = none ? "❌ 網站上還沒有 cfg.js：同事在電腦用短碼登入現在完全不能用。按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 index.html 或 hb.html 放同一層），1～2 分鐘後按「🔄 檢查」，看到 ✅ 就好了（之後這一段不再出現）。" : "⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的短碼比較長（照樣能用）；換好以後變短，這一段就不再出現。";
+      st.textContent = none ? "❌ 網站上還沒有 cfg.js：同事在電腦用驗證碼登入現在完全不能用。按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 index.html 或 hb.html 放同一層），1～2 分鐘後按「🔄 檢查」，看到 ✅ 就好了（之後這一段不再出現）。" : "⏳ 要換一次 cfg.js：按「⬇️ 下載 cfg.js」，傳到 GitHub（跟手冊網頁 hb.html 或 index.html 放同一層，同名的蓋掉），1～2 分鐘後按「🔄 檢查」。換好以前，同事在 LINE「🔗 外部連結」拿到的驗證碼比較長（照樣能用）；換好以後變短，這一段就不再出現。";
       if (good === on7) { pcShow(!good && (none || !pcHidden())); if (say) ckm.textContent = good ? "✅ GitHub 上的 cfg.js 是新的" : none ? "❌ 網站上還是沒有 cfg.js（或還沒更新好）：確定傳上去了（檔名 cfg.js、跟 index.html 同一層），等 1～2 分鐘再按一次。" : "❌ GitHub 上的還是舊的 cfg.js（或還沒更新好）：確定傳上去了，等 1～2 分鐘再按一次。"; return; }
       call("hbEntry", [good ? 1 : -1]).then(function (r2) {
         if (!adOk(r2)) return;
-        toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的短碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的短碼先改回長的（照樣能用），請照 ⑤ 換一次");
+        toast(good ? "✅ cfg.js 換好了：同事在 LINE 拿到的驗證碼從現在起變短了" : "⚠ GitHub 上的 cfg.js 不是現在這一份：同事拿到的驗證碼先改回長的（照樣能用），請照 ⑤ 換一次");
         drawPcLink();
       }, function (e) { ckm.textContent = "❌ " + e.message; });
     });
