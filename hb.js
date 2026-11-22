@@ -6000,6 +6000,84 @@ function scrLogin(why, r) {
   if (canLogin()) { LG.role = ""; scrLoginCode(why, r); return; }
   scrFirst("", "", Object.assign({}, r || {}, { why: why || "" }));
 }
+// ═════ 分支 Passkey（使用者說「Passkey 這個開立分支製作，多一個驗證的選項」）═════
+// 登入畫面多「👆 用 Passkey 登入」＝取代驗證碼那一步（之後照樣打員工編號＋姓名）；登入以後問一次「這台要建立 Passkey 嗎？」。
+// LINE 裡面的瀏覽器不放（不一定能用）；這台沒有指紋／臉／PIN 的不問。後端在 05_Passkey。
+function pkEnc(buf) { var b = new Uint8Array(buf), s = ""; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function pkDec(s) { s = String(s || "").replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; }
+function pkInLine() { return /\sLine\//i.test(navigator.userAgent || ""); }
+function pkCan() { try { return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get && window.isSecureContext) && !pkInLine(); } catch (e) { return false; } }
+function pkWhy(e) { var n = e && e.name || ""; return n === "NotAllowedError" ? "取消了，或這台沒有建立過 Passkey（改用上面的驗證碼）" : n === "InvalidStateError" ? "這台已經建立過了" : n === "SecurityError" ? "這個網址不能用 Passkey" : "這台不能用 Passkey（" + (n || "看不懂") + "）"; }
+function pkBox() {
+  if (!pkCan()) return null;
+  var msg = h("div", { class: "scr-m pkm", role: "status", "aria-live": "polite" });
+  var b = h("button", { class: "pkbtn", type: "button", id: "pkgo" }, ["👆 用 Passkey 登入"]), busy = false;
+  b.onclick = function () {
+    if (busy) return; busy = true; b.disabled = true; msg.textContent = "⏳ 準備中…";
+    var end = function (t) { busy = false; b.disabled = false; msg.textContent = t || ""; };
+    call("hbPkBegin", [], { ms: 40000 }).then(function (r) {
+      if (!r || !r.ok || !r.o) { end("❌ " + String(r && r.err || "現在不能用 Passkey")); return; }
+      msg.textContent = "👆 照瀏覽器的視窗刷指紋／Face ID／打 PIN…";
+      var o = r.o;
+      return navigator.credentials.get({ publicKey: { challenge: pkDec(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required", allowCredentials: [] } }).then(function (c) {
+        var rr = c.response; msg.textContent = "確認中…";
+        return call("hbPkFinish", [{ id: c.id, rawId: pkEnc(c.rawId), clientDataJSON: pkEnc(rr.clientDataJSON), authenticatorData: pkEnc(rr.authenticatorData), signature: pkEnc(rr.signature), userHandle: rr.userHandle ? pkEnc(rr.userHandle) : "", type: c.type }, DEVLAB], { ms: 80000 }).then(function (x) {
+          if (x && TRE.test(String(x.t || ""))) {
+            LG.code = ""; LG.dead = true; try { lgSave(); lgStop(); } catch (e) {  } if (typeof pvClear === "function") pvClear();
+            T = String(x.t); FROMSAVED = false; FROMLINK = false; keySave(); onBoot(x); return;
+          }
+          end("❌ " + String(x && x.err || "沒登入成功，再試一次"));
+        });
+      }, function (e) { end("❌ " + pkWhy(e)); });
+    }, function (e) { end("❌ " + (e && e.message || "連不上後端")); });
+  };
+  return h("div", { class: "pkbox" }, [h("div", { class: "pkor" }, ["或"]), b, h("div", { class: "pknote" }, ["指紋、Face ID、Windows Hello（這台建立過才能用）"]), msg]);
+}
+function pkKey() { return "yzpk_" + String(ME && (ME.tail || ME.emp) || ""); }
+function pkMine() { try { return JSON.parse(localStorage.getItem(pkKey()) || "null") || {}; } catch (e) { return {}; } }
+function pkMark(o) { try { localStorage.setItem(pkKey(), JSON.stringify(o)); } catch (e) {  } }
+function pkOffer() {
+  if (!pkCan() || ONCE || !ME || !(ME.tail || ME.emp) || $(".pkban")) return;
+  var v = pkMine(); if (v.have || Date.now() - (+v.no || 0) < 30 * 864e5) return;
+  var chk; try { chk = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (e) { return; }
+  Promise.resolve(chk).then(function (yes) {
+    if (!yes || $(".pkban") || !MAIN) return;
+    var go = h("button", { class: "pkb1", type: "button" }, ["👆 建立 Passkey"]), no = h("button", { class: "pkb2", type: "button" }, ["不用"]);
+    var t = h("span", { class: "sp" }, [h("b", {}, ["👆 這台要建立 Passkey 嗎？"]), h("br"), "下次在這台打開網址，刷指紋就能登入（不用打驗證碼）。共用電腦請不要建立。"]);
+    var ban = h("div", { class: "pkban", role: "dialog", "aria-label": "建立 Passkey" }, [t, go, no]);
+    no.onclick = function () { pkMark({ no: Date.now() }); ban.remove(); };
+    go.onclick = function () { pkReg(go, ban); };
+    document.body.appendChild(ban);
+  }, function () {  });
+}
+function pkReg(btnEl, ban) {
+  btnEl.disabled = true;
+  var done = function (t, keep) { btnEl.disabled = false; if (t) toast(t); if (!keep && ban) ban.remove(); };
+  call("hbPkRegBegin", []).then(function (r) {
+    if (!r || !r.ok || !r.o) { if (r && r.full) pkMark({ have: 1 }); done("❌ " + String(r && r.err || "現在不能建立"), !(r && r.full)); return; }
+    var o = r.o;
+    return navigator.credentials.create({ publicKey: { challenge: pkDec(o.challenge), rp: o.rp, user: { id: pkDec(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams, authenticatorSelection: o.authenticatorSelection, timeout: o.timeout, attestation: "none", excludeCredentials: (o.excludeCredentials || []).map(function (x) { return { type: "public-key", id: pkDec(x.id) }; }) } }).then(function (c) {
+      var rr = c.response;
+      return call("hbPkRegFinish", [{ id: c.id, rawId: pkEnc(c.rawId), clientDataJSON: pkEnc(rr.clientDataJSON), attestationObject: pkEnc(rr.attestationObject), type: c.type }, DEVLAB]).then(function (x) {
+        if (x && x.ok) { pkMark({ have: 1 }); done("✅ Passkey 建立好了：下次在這台打開網址，按「👆 用 Passkey 登入」"); }
+        else done("❌ " + String(x && x.err || "沒建立成功"), true);
+      });
+    }, function (e) { if (e && e.name === "InvalidStateError") { pkMark({ have: 1 }); done("這台已經建立過 Passkey 了"); } else done("❌ " + pkWhy(e).replace("，或這台沒有建立過 Passkey（改用上面的驗證碼）", ""), true); });
+  }, function (e) { done("❌ " + (e && e.message || "連不上後端"), true); });
+}
+function pkLoad() {
+  call("hbPkAdm", ["n"]).then(function (r) { if (r && r.ok && r.pk) { AD.pk = r.pk; drawUsers(); } }, function () {  });
+}
+function pkTag(u) {
+  var n = u && AD.pk ? +AD.pk[u.uid] || 0 : 0;
+  if (!n) return null;
+  var b = btn("清除", function () {
+    if (!b.dataset.ok) { b.dataset.ok = "1"; b.textContent = "再按一次清除"; return; }
+    b.disabled = true;
+    call("hbPkAdm", ["clr", u.uid]).then(function (x) { if (!adOk(x)) { b.disabled = false; return; } delete AD.pk[u.uid]; drawUsers(); toast("✅ 清除了 " + (x.n || 0) + " 台 Passkey"); }, function (e) { b.disabled = false; toast("❌ " + e.message); });
+  }, "sm pkdel");
+  return h("span", { class: "pkrow" }, [h("span", { class: "pktag" }, ["👆 Passkey " + n + " 台"]), b]);
+}
 function scrLoginCode(why, r) {
   r = r || {};
   lgStop(); pcStop();
@@ -6020,6 +6098,7 @@ function scrLoginCode(why, r) {
   screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
     h("div", { class: "lggrid" }, [pair, wrap]),
+    pkBox(),
     h("p", { class: "lgfine" }, ["代號、驗證碼只能在這裡用、只能用一次；不要給任何人。"]),
     KEEP_ED || (typeof KEEP_QE !== "undefined" && KEEP_QE) ? h("p", { class: "lockkeep" }, ["✏️ 你有還沒儲存的修改：登入以後會接著編輯（還沒存進去）。"]) : null], "lgscr");
   var my = ++LG.seq;
@@ -6540,6 +6619,7 @@ function enterMain(r) {
   OUTED = false;
   HB = r.data; CFG = r.cfg || CFG || {}; ME = r.me || {}; IS_DEV = r.st === "dev"; if (r.v) BACKV = String(r.v);
   if (IS_DEV && !ONCE) keyDev();
+  setTimeout(pkOffer, 1500);
   if (typeof offSave === "function") { if (r.cached) NET.cached = 1; else { NET.cached = 0; NET.lastSave = 0; offSave(r); } }
   V3 = +r.v3 || 0;
   YZ_CLOUD = bk55Ok();
@@ -23172,6 +23252,7 @@ function adminLoad() {
   rsLoad();
   devLoad();
   abLoad();
+  pkLoad();
   call("hbLog", [300]).then(function (r) { if (!adOk(r)) return; AD.log = r.rows || []; drawLog(); }, function (e) { var b = $("#logBox"); if (b) b.textContent = "❌ " + e.message; });
 }
 function abLoad() {
@@ -23304,7 +23385,7 @@ function ppRow(x) {
   if (x.memo) sub.push(x.memo);
   return h("div", { class: "pprow" }, [
     h("div", { class: "ppemp" }, [x.emp || "—"]),
-    h("div", { class: "ppnm" }, [h("b", {}, [nm]), sub.length ? h("small", {}, [sub.join("　")]) : null, u ? adRmk(u) : null]),
+    h("div", { class: "ppnm" }, [h("b", {}, [nm]), sub.length ? h("small", {}, [sub.join("　")]) : null, u ? pkTag(u) : null, u ? adRmk(u) : null]),
     h("span", { class: "st " + st[0] }, [st[1]]),
     h("div", { class: "acts" }, acts)]);
 }
