@@ -6008,56 +6008,70 @@ function pkDec(s) { s = String(s || "").replace(/-/g, "+").replace(/_/g, "/"); w
 function pkInLine() { return /\sLine\//i.test(navigator.userAgent || ""); }
 function pkCan() { try { return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get && window.isSecureContext) && !pkInLine(); } catch (e) { return false; } }
 function pkWhy(e) { var n = e && e.name || ""; return n === "NotAllowedError" ? "取消了，或這台沒有建立過 Passkey（改用上面的驗證碼）" : n === "InvalidStateError" ? "這台已經建立過了" : n === "SecurityError" ? "這個網址不能用 Passkey" : "這台不能用 Passkey（" + (n || "看不懂") + "）"; }
-function pkBox() {
+function pkGet(o) { return navigator.credentials.get({ publicKey: { challenge: pkDec(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required", allowCredentials: [] } }).then(function (c) { var rr = c.response; return { id: c.id, rawId: pkEnc(c.rawId), clientDataJSON: pkEnc(rr.clientDataJSON), authenticatorData: pkEnc(rr.authenticatorData), signature: pkEnc(rr.signature), userHandle: rr.userHandle ? pkEnc(rr.userHandle) : "", type: c.type }; }); }
+// PK-2（使用者說「所有驗證新增 Passkey」）：每個驗證畫面都有。opt.send(cred)＝送去哪裡驗；opt.done(x)＝過了以後
+function pkBox(opt) {
   if (!pkCan()) return null;
+  opt = opt || {};
   var msg = h("div", { class: "scr-m pkm", role: "status", "aria-live": "polite" });
-  var b = h("button", { class: "pkbtn", type: "button", id: "pkgo" }, ["👆 用 Passkey 登入"]), busy = false;
+  var b = h("button", { class: "pkbtn", type: "button", id: opt.id || "pkgo" }, [opt.label || "👆 用 Passkey 登入"]), busy = false;
+  var send = opt.send || function (cred) { return call("hbPkFinish", [cred, DEVLAB], { ms: 80000 }); };
+  var done = opt.done || function (x) {
+    if (!(x && TRE.test(String(x.t || "")))) return false;
+    LG.code = ""; LG.dead = true; try { lgSave(); lgStop(); pcStop(); } catch (e) {  } if (typeof pvClear === "function") pvClear();
+    T = String(x.t); FROMSAVED = false; FROMLINK = false; keySave(); onBoot(x); return true;
+  };
   b.onclick = function () {
     if (busy) return; busy = true; b.disabled = true; msg.textContent = "⏳ 準備中…";
     var end = function (t) { busy = false; b.disabled = false; msg.textContent = t || ""; };
     call("hbPkBegin", [], { ms: 40000 }).then(function (r) {
       if (!r || !r.ok || !r.o) { end("❌ " + String(r && r.err || "現在不能用 Passkey")); return; }
-      msg.textContent = "👆 照瀏覽器的視窗刷指紋／Face ID／打 PIN…";
-      var o = r.o;
-      return navigator.credentials.get({ publicKey: { challenge: pkDec(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required", allowCredentials: [] } }).then(function (c) {
-        var rr = c.response; msg.textContent = "確認中…";
-        return call("hbPkFinish", [{ id: c.id, rawId: pkEnc(c.rawId), clientDataJSON: pkEnc(rr.clientDataJSON), authenticatorData: pkEnc(rr.authenticatorData), signature: pkEnc(rr.signature), userHandle: rr.userHandle ? pkEnc(rr.userHandle) : "", type: c.type }, DEVLAB], { ms: 80000 }).then(function (x) {
-          if (x && TRE.test(String(x.t || ""))) {
-            LG.code = ""; LG.dead = true; try { lgSave(); lgStop(); } catch (e) {  } if (typeof pvClear === "function") pvClear();
-            T = String(x.t); FROMSAVED = false; FROMLINK = false; keySave(); onBoot(x); return;
-          }
-          end("❌ " + String(x && x.err || "沒登入成功，再試一次"));
-        });
+      msg.textContent = "👆 照手機／電腦跳出來的視窗刷 Face ID／指紋／打 PIN…";
+      return pkGet(r.o).then(function (cred) {
+        msg.textContent = "確認中…";
+        return send(cred).then(function (x) { if (done(x)) { end(""); return; } end("❌ " + String(x && x.err || "沒過，再試一次")); });
       }, function (e) { end("❌ " + pkWhy(e)); });
     }, function (e) { end("❌ " + (e && e.message || "連不上後端")); });
   };
-  return h("div", { class: "pkbox" }, [h("div", { class: "pkor" }, ["或"]), b, h("div", { class: "pknote" }, ["指紋、Face ID、Windows Hello（這台建立過才能用）"]), msg]);
+  return h("div", { class: "pkbox" }, [h("div", { class: "pkor" }, ["或"]), b, h("div", { class: "pknote" }, [opt.note || "Face ID、指紋、Windows Hello（這台建立過才能用；第一次請先用驗證碼登入，進去以後會請你建立）"]), msg]);
 }
 function pkKey() { return "yzpk_" + String(ME && (ME.tail || ME.emp) || ""); }
 function pkMine() { try { return JSON.parse(localStorage.getItem(pkKey()) || "null") || {}; } catch (e) { return {}; } }
 function pkMark(o) { try { localStorage.setItem(pkKey(), JSON.stringify(o)); } catch (e) {  } }
-function pkOffer() {
-  if (!pkCan() || ONCE || !ME || !(ME.tail || ME.emp) || $(".pkban")) return;
-  var v = pkMine(); if (v.have || Date.now() - (+v.no || 0) < 30 * 864e5) return;
-  var chk; try { chk = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (e) { return; }
+function pkLater() { try { return sessionStorage.getItem("yzpk_later") === "1"; } catch (e) { return false; } }
+// PK-2：不管用哪一種驗證進來，馬上跳一個大視窗「刷一次 Face ID／指紋，建立 Passkey」；「以後再說」＝下次登入再問
+function pkOffer(force) {
+  if (!pkCan() || !ME || !(ME.tail || ME.emp) || $(".pkmod")) return;
+  if (!force && (pkMine().have || pkLater())) return;
+  var chk; try { chk = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (e) { chk = Promise.resolve(false); }
   Promise.resolve(chk).then(function (yes) {
-    if (!yes || $(".pkban") || !MAIN) return;
-    var go = h("button", { class: "pkb1", type: "button" }, ["👆 建立 Passkey"]), no = h("button", { class: "pkb2", type: "button" }, ["不用"]);
-    var t = h("span", { class: "sp" }, [h("b", {}, ["👆 這台要建立 Passkey 嗎？"]), h("br"), "下次在這台打開網址，刷指紋就能登入（不用打驗證碼）。共用電腦請不要建立。"]);
-    var ban = h("div", { class: "pkban", role: "dialog", "aria-label": "建立 Passkey" }, [t, go, no]);
-    no.onclick = function () { pkMark({ no: Date.now() }); ban.remove(); };
-    go.onclick = function () { pkReg(go, ban); };
-    document.body.appendChild(ban);
+    if ($(".pkmod") || !MAIN) return;
+    if (!yes && !force) return;
+    var go = h("button", { class: "pkb1", type: "button" }, ["👆 刷 Face ID／指紋 建立"]), no = h("button", { class: "pkb2", type: "button" }, [force ? "關掉" : "以後再說"]);
+    var m = h("div", { class: "scr-m pkm", role: "status", "aria-live": "polite" });
+    var have = pkMine().have;
+    var box = h("div", { class: "pkin" }, [h("big", { "aria-hidden": "true" }, ["👆"]), h("h3", {}, [have ? "這台已經建立過 Passkey" : "刷一次 Face ID／指紋，建立 Passkey"]),
+      h("p", {}, [force ? "" : "驗證過了 ✅", force ? null : h("br"), "這台建立 Passkey 以後，下次打開網址按「👆 用 Passkey 登入」，刷一下就好，不用再拿驗證碼。", h("br"), h("small", {}, ["共用電腦請不要建立。"])]),
+      go, no, m]);
+    var mod = h("div", { class: "pkmod", role: "dialog", "aria-modal": "true", "aria-label": "建立 Passkey" }, [box]);
+    var close = function () { mod.remove(); };
+    no.onclick = function () { if (!force) { try { sessionStorage.setItem("yzpk_later", "1"); } catch (e) {  } } close(); };
+    mod.onkeydown = function (e) { if (e.key === "Escape") no.onclick(); };
+    go.onclick = function () { pkReg(go, mod, m); };
+    document.body.appendChild(mod);
+    try { go.focus(); } catch (e) {  }
   }, function () {  });
 }
-function pkReg(btnEl, ban) {
+function pkReg(btnEl, mod, m) {
   btnEl.disabled = true;
-  var done = function (t, keep) { btnEl.disabled = false; if (t) toast(t); if (!keep && ban) ban.remove(); };
+  var say = function (t) { if (m) m.textContent = t; else toast(t); };
+  var done = function (t, keep) { btnEl.disabled = false; if (!keep && mod) { mod.remove(); if (t) toast(t); } else if (t) say(t); };
+  say("⏳ 準備中…");
   call("hbPkRegBegin", []).then(function (r) {
-    if (!r || !r.ok || !r.o) { if (r && r.full) pkMark({ have: 1 }); done("❌ " + String(r && r.err || "現在不能建立"), !(r && r.full)); return; }
-    var o = r.o;
+    if (!r || !r.ok || !r.o) { if (r && r.full) pkMark({ have: 1 }); done("❌ " + String(r && r.err || "現在不能建立"), true); return; }
+    var o = r.o; say("👆 照跳出來的視窗刷 Face ID／指紋／打 PIN…");
     return navigator.credentials.create({ publicKey: { challenge: pkDec(o.challenge), rp: o.rp, user: { id: pkDec(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams, authenticatorSelection: o.authenticatorSelection, timeout: o.timeout, attestation: "none", excludeCredentials: (o.excludeCredentials || []).map(function (x) { return { type: "public-key", id: pkDec(x.id) }; }) } }).then(function (c) {
-      var rr = c.response;
+      var rr = c.response; say("確認中…");
       return call("hbPkRegFinish", [{ id: c.id, rawId: pkEnc(c.rawId), clientDataJSON: pkEnc(rr.clientDataJSON), attestationObject: pkEnc(rr.attestationObject), type: c.type }, DEVLAB]).then(function (x) {
         if (x && x.ok) { pkMark({ have: 1 }); done("✅ Passkey 建立好了：下次在這台打開網址，按「👆 用 Passkey 登入」"); }
         else done("❌ " + String(x && x.err || "沒建立成功"), true);
@@ -6065,6 +6079,7 @@ function pkReg(btnEl, ban) {
     }, function (e) { if (e && e.name === "InvalidStateError") { pkMark({ have: 1 }); done("這台已經建立過 Passkey 了"); } else done("❌ " + pkWhy(e).replace("，或這台沒有建立過 Passkey（改用上面的驗證碼）", ""), true); });
   }, function (e) { done("❌ " + (e && e.message || "連不上後端"), true); });
 }
+function pkHdr(cls) { return pkCan() ? btn("👆 Passkey", function () { pkOffer(true); }, cls || "sm") : null; }
 function pkLoad() {
   call("hbPkAdm", ["n"]).then(function (r) { if (r && r.ok && r.pk) { AD.pk = r.pk; drawUsers(); } }, function () {  });
 }
@@ -6389,7 +6404,7 @@ function scrLoginPc(why, r) {
     h("div", { class: "scr-b" }, [go]), m]);
   var box = screen([logo(), h("h2", {}, ["🔐 登入藥戰手冊"]),
     lines.length ? h("div", { class: "scr-p" }, lines.map(function (l) { return h("p", {}, [l]); })) : null,
-    step1, pcFine(),
+    step1, pkBox(), pcFine(),
     KEEP_ED || (typeof KEEP_QE !== "undefined" && KEEP_QE) ? h("p", { class: "lockkeep" }, ["✏️ 你有還沒儲存的修改：登入以後會接著編輯（還沒存進去）。"]) : null], "lgscr pcscr");
   var focus = function (el) { try { el.focus(); } catch (e) {  } };
   var back = function (msg) { PCLK = ""; lkSave(""); if (canLogin()) scrLoginCode(msg ? "again" : "", msg ? { err: msg } : {}); else scrFirst("", msg, Object.assign({}, r, { why: "" })); };
@@ -6637,6 +6652,7 @@ function enterMain(r) {
   var hdr = h("header", { class: "hdr", id: "hdr" }, [h("div", { class: "hrow" }, [
     h("button", { class: "hlogo", type: "button", title: "回首頁（手冊目錄）", onclick: function () { goHomeTab(); } }, [logoImg(), "藥戰手冊", IS_DEV ? h("span", { class: "devtag" }, ["Devs"]) : null]), IS_DEV ? tabs : null, h("span", { class: "sp" }),
     h("span", lgAttr({ class: "who" }), [who]), h("span", { class: "idle", id: "idle" }, [""]),
+    pkHdr("sm pkhd"),
     btn("登出", function () { logout("out"); }, "sm")
   ])]);
   APP.appendChild(hdr);
@@ -7019,6 +7035,7 @@ function devPv() {
     chk: function (sec, v) { return call("hbDevPv", [DEVP, sec, v], { ms: 60000 }).then(function (x) { return !x || x.nf ? { out: 1 } : x; }); },
     ok: function () { devId(""); },
     out: function () { pvClear(); nf404(); },
+    pk: function (getSec, okFn) { return pkBox({ id: "pkdev", label: "👆 用 Passkey 驗證", note: "開發者這台建立過才能用（刷完照樣打員工編號＋姓名）", send: function (cred) { return call("hbDevPk", [DEVP, getSec(), cred], { ms: 80000 }); }, done: function (x) { if (x && x.nf) { pvClear(); nf404(); return true; } if (x && x.ok) { okFn(); return true; } return false; } }); },
     fine: "驗證碼只能在這裡用、只能用一次；不要給任何人。"
   });
 }
@@ -7060,7 +7077,7 @@ function scrPvStep(o) {
   var go = h("button", { class: "btn pri lggo", type: "button", id: "pvgo" }, ["下一步"]);
   var msg = h("div", { class: "scr-m lgm", role: "status", "aria-live": "polite" });
   var box = h("div", { class: "pcbox", id: "pvstep" }, [h("div", { class: "lgst" }, [o.step]), boxes.el, h("div", { class: "pclrow pcc4b" }, [go]), msg]);
-  var scr = screen([].concat(o.head, [box, o.fine ? h("p", { class: "lgfine" }, [o.fine]) : null]), "lgscr pcscr pvscr");
+  var scr = screen([].concat(o.head, [box, o.fine ? h("p", { class: "lgfine" }, [o.fine]) : null, o.pk ? o.pk(function () { return sec; }, function () { stop(); pvClear(); o.ok(); }) : null]), "lgscr pcscr pvscr");
   var alive = function () { return my === LG.seq && scr.isConnected; };
   var stop = function () { clearInterval(tm); tm = 0; };
   var ro = function (on) { go.disabled = on; boxes.ins.forEach(function (x) { x.readOnly = on; }); };
@@ -8138,7 +8155,7 @@ function pgStatus() {
       lb("✏️", "編輯", function () { showTab("edit"); }),
       lb("👥", "管理", function () { showTab("admin"); }, "", true)
     ]) : null,
-    h("div", { class: "pm-row" }, [typeof kbBtn === "function" ? kbBtn("hbtn") : null, lb("", "登出", function () { logout("out"); })])
+    h("div", { class: "pm-row" }, [typeof kbBtn === "function" ? kbBtn("hbtn") : null, pkCan() ? lb("👆", "Passkey", function () { pkOffer(true); }) : null, lb("", "登出", function () { logout("out"); })])
   ]);
 }
 function pgTool(pg, c, atHome, ta, pwb) {
@@ -8425,6 +8442,7 @@ function drawHomeFull(root) {
     h("div", { class: "hwho" }, [who ? h("b", lgAttr({}), [who]) : null, h("span", { class: "idle" }, [""]), h("span", { class: "idle short", "aria-hidden": "true" }, [""])]),
     IS_DEV ? btn("✏️ 編輯", function () { showTab("edit"); }, "sm hbtn") : null,
     IS_DEV ? h("button", { class: "btn sm hbtn", type: "button", onclick: function () { showTab("admin"); } }, ["👥 管理", abDot()]) : null,
+    pkHdr("sm hbtn pkhd"),
     btn("登出", function () { logout("out"); }, "sm hbtn")
   ]));
   idleTick();
