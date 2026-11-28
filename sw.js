@@ -1,38 +1,88 @@
-var V = "hb-c5853758e8";
-var ASSETS = ["hb.css?v=c5853758e8", "hb3d.js?v=c5853758e8", "hb.js?v=c5853758e8"];
-var PAGES = ["hb.html", "index.html"];
-var SOFT = ["cfg.js"];
-var LAZY = ["hbpdf.js", "hbcmap.js"];
-var BASE = self.registration.scope;
-function u(p) { return new URL(p, BASE).href; }
-function put(req, r) { try { var cp = r.clone(); caches.open(V).then(function (c) { return c.put(req, cp); }).catch(function () {}); } catch (e) {} }
-function withTimeout(p, ms) { return new Promise(function (ok, bad) { var t = setTimeout(function () { bad(new Error("timeout")); }, ms); p.then(function (r) { clearTimeout(t); ok(r); }, function (e) { clearTimeout(t); bad(e); }); }); }
-function fromCache(req, alt) { return caches.open(V).then(function (c) { return c.match(req, { ignoreSearch: true }).then(function (r) { if (r) return r; return alt ? c.match(u(alt)) : null; }); }); }
-function netFirst(req, ms, alt) {
-  return withTimeout(fetch(req), ms).then(function (r) { if (r && r.ok) put(req, r); return r; }).catch(function () { return fromCache(req, alt).then(function (r) { return r || Response.error(); }); });
+// 藥戰手冊網站：離線用的快取（第 84 批改寫成好讀的寫法，功能跟以前一樣）
+// 只處理「這個網站自己的檔案」；別的網址一律不管。
+"use strict";
+
+var HB_VERSION = "24fed83064";
+var HB_CACHE_NAME = "hb-" + HB_VERSION;
+var HB_ASSET_FILES = ["hb.css?v=" + HB_VERSION, "hb3d.js?v=" + HB_VERSION, "hb.js?v=" + HB_VERSION];
+var HB_PAGE_FILES = ["hb.html", "index.html"];
+var HB_SETTING_FILES = ["cfg.js"];
+var HB_LATER_FILES = ["hbpdf.js", "hbcmap.js"];
+var HB_SITE_ROOT = self.registration.scope;
+
+function hbFullUrl(name) {
+  return new URL(name, HB_SITE_ROOT).href;
 }
-function cacheFirst(req) {
-  return fromCache(req).then(function (r) { if (r) return r; return fetch(req).then(function (x) { if (x && x.ok) put(req, x); return x; }); });
+
+function hbSaveCopy(request, response) {
+  try {
+    var copy = response.clone();
+    caches.open(HB_CACHE_NAME).then(function (box) { return box.put(request, copy); }).catch(function () {});
+  } catch (err) {}
 }
-self.addEventListener("install", function (e) {
-  e.waitUntil(caches.open(V).then(function (c) {
-    return Promise.all(ASSETS.concat(PAGES, SOFT).map(function (p) { return c.add(u(p)).catch(function () {}); }));
+
+function hbWithTimeLimit(promise, ms) {
+  return new Promise(function (resolve, reject) {
+    var timer = setTimeout(function () { reject(new Error("timeout")); }, ms);
+    promise.then(function (r) { clearTimeout(timer); resolve(r); }, function (e) { clearTimeout(timer); reject(e); });
+  });
+}
+
+function hbFromCache(request, fallbackName) {
+  return caches.open(HB_CACHE_NAME).then(function (box) {
+    return box.match(request, { ignoreSearch: true }).then(function (found) {
+      if (found) return found;
+      return fallbackName ? box.match(hbFullUrl(fallbackName)) : null;
+    });
+  });
+}
+
+// 網路優先：拿得到就用新的（順便存一份），拿不到才用存著的
+function hbNetworkFirst(request, ms, fallbackName) {
+  return hbWithTimeLimit(fetch(request), ms).then(function (response) {
+    if (response && response.ok) hbSaveCopy(request, response);
+    return response;
+  }).catch(function () {
+    return hbFromCache(request, fallbackName).then(function (found) { return found || Response.error(); });
+  });
+}
+
+// 存的優先：程式檔（網址有版本號，內容不會變）
+function hbCacheFirst(request) {
+  return hbFromCache(request).then(function (found) {
+    if (found) return found;
+    return fetch(request).then(function (response) {
+      if (response && response.ok) hbSaveCopy(request, response);
+      return response;
+    });
+  });
+}
+
+self.addEventListener("install", function (event) {
+  var all = HB_ASSET_FILES.concat(HB_PAGE_FILES, HB_SETTING_FILES);
+  event.waitUntil(caches.open(HB_CACHE_NAME).then(function (box) {
+    return Promise.all(all.map(function (name) { return box.add(hbFullUrl(name)).catch(function () {}); }));
   }).then(function () { return self.skipWaiting(); }));
 });
-self.addEventListener("activate", function (e) {
-  e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("hb-") === 0 && k !== V; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); }));
+
+// 換新版本：把舊版本的快取清掉
+self.addEventListener("activate", function (event) {
+  event.waitUntil(caches.keys().then(function (names) {
+    return Promise.all(names.filter(function (n) { return n.indexOf("hb-") === 0 && n !== HB_CACHE_NAME; }).map(function (n) { return caches.delete(n); }));
+  }).then(function () { return self.clients.claim(); }));
 });
-self.addEventListener("fetch", function (e) {
-  var req = e.request;
-  if (req.method !== "GET") return;
-  var url = req.url.split("#")[0];
-  if (url.indexOf(BASE) !== 0) return;
-  var r = url.slice(BASE.length), name = r.split("?")[0];
-  if (req.mode === "navigate") {
-    if (name === "hb.html" || name === "index.html") e.respondWith(netFirst(req, 4000));
-    else if (name === "") e.respondWith(netFirst(req, 4000, "index.html"));
+
+self.addEventListener("fetch", function (event) {
+  var request = event.request;
+  if (request.method !== "GET") return;
+  var url = request.url.split("#")[0];
+  if (url.indexOf(HB_SITE_ROOT) !== 0) return;
+  var path = url.slice(HB_SITE_ROOT.length), name = path.split("?")[0];
+  if (request.mode === "navigate") {
+    if (name === "hb.html" || name === "index.html") event.respondWith(hbNetworkFirst(request, 4000));
+    else if (name === "") event.respondWith(hbNetworkFirst(request, 4000, "index.html"));
     return;
   }
-  if (ASSETS.indexOf(r) >= 0 || LAZY.indexOf(name) >= 0) { e.respondWith(cacheFirst(req)); return; }
-  if (SOFT.indexOf(name) >= 0) { e.respondWith(netFirst(req, 3000)); return; }
+  if (HB_ASSET_FILES.indexOf(path) >= 0 || HB_LATER_FILES.indexOf(name) >= 0) { event.respondWith(hbCacheFirst(request)); return; }
+  if (HB_SETTING_FILES.indexOf(name) >= 0) { event.respondWith(hbNetworkFirst(request, 3000)); return; }
 });

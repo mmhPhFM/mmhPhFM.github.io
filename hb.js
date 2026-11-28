@@ -5612,6 +5612,7 @@ function h(tag, attrs, kids) {
     else if (k === "style") e.style.cssText = v;
     else if (k.slice(0, 2) === "on" && typeof v === "function") e[k] = v;
     else if (k === "value") e.value = v;
+    else if (k === "src" && tag === "img" && SVGOK) e.setAttribute("src", svgPre(e, v));
     else if (k === "checked") e.checked = !!v;
     else e.setAttribute(k, v === true ? "" : v);
   }
@@ -5657,6 +5658,56 @@ function applyCfg() {
   YZ_CFG.imgDirect = CFG.imgDirect !== false; YZ_CFG.animDirect = CFG.animDirect !== false; YZ_CFG.footer = CFG.footer !== false;
   YZ_CFG.webUrl = location.origin + location.pathname;
   IDLE_MS = Math.max(5, Math.min(240, +CFG.idle || 30)) * 6e4;
+}
+var SVGM = null, SVGOK = false, SVGBAD = 0, SVGOB = null;
+var SVG_RE = /^https:\/\/(?:drive\.google\.com\/thumbnail\?id=|lh3\.googleusercontent\.com\/d\/)([A-Za-z0-9_-]{10,80})(?:&sz=w\d{1,4})?$/;
+function svgSet(s) {
+  var ok = !!(s && s.m && typeof s.m === "object" && typeof s.u === "string" && /^https:\/\/[a-z0-9.-]+\.google(?:usercontent)?\.com\//.test(s.u));
+  SVGM = ok ? { u: s.u, s: typeof s.s === "string" ? s.s : "", m: s.m } : null;
+  if (!SVGM) { SVGOK = false; return; }
+  if (SVGOK) return;
+  var k = Object.keys(SVGM.m)[0], u = k ? svgOf("https://lh3.googleusercontent.com/d/" + k, true) : "";
+  if (!u) return;
+  var im = new Image();
+  im.onload = function () { if (SVGM && im.naturalWidth > 0) { SVGOK = true; svgWatch(); svgAll(document.body); } };
+  im.onerror = function () { SVGOK = false; };
+  im.src = u;
+}
+function svgOf(u, any) {
+  if (!SVGM || (!SVGOK && !any)) return "";
+  var m = SVG_RE.exec(String(u || "")); if (!m) return "";
+  var id = SVGM.m[m[1]];
+  return typeof id === "string" && /^[A-Za-z0-9_-]{10,80}$/.test(id) ? SVGM.u + id + SVGM.s : "";
+}
+function svgPre(im, v) {
+  var s = svgOf(v); if (!s) return v;
+  im.setAttribute("data-yo", v); im.setAttribute("data-ys", s);
+  if (!im._yzSv) { im._yzSv = 1; im.addEventListener("error", svgBack); }
+  return s;
+}
+function svgBack(e) {
+  var im = e.target, o = im.getAttribute("data-yo"), s = im.getAttribute("data-ys");
+  if (!o || !s || im.getAttribute("src") !== s) return;
+  im.setAttribute("data-yn", o); im.removeAttribute("data-ys"); im.setAttribute("src", o);
+  if (++SVGBAD >= 3) SVGOK = false;
+}
+function svgImg(im) {
+  if (!SVGOK || !im || im.tagName !== "IMG") return;
+  var cur = im.getAttribute("src") || "";
+  if (!cur || cur === im.getAttribute("data-ys") || cur === im.getAttribute("data-yn")) return;
+  var s = svgPre(im, cur); if (s !== cur) im.setAttribute("src", s);
+}
+function svgAll(root) { if (root && root.querySelectorAll) Array.prototype.forEach.call(root.querySelectorAll("img[src]"), svgImg); }
+function svgWatch() {
+  if (SVGOB || !window.MutationObserver || !document.body) return;
+  SVGOB = new MutationObserver(function (list) {
+    if (!SVGOK) return;
+    list.forEach(function (r) {
+      if (r.type === "attributes") svgImg(r.target);
+      else Array.prototype.forEach.call(r.addedNodes || [], function (n) { if (n.nodeType === 1) { if (n.tagName === "IMG") svgImg(n); else if (n.firstElementChild) svgAll(n); } });
+    });
+  });
+  SVGOB.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
 }
 
 (function () {
@@ -6620,7 +6671,7 @@ function refreshData() {
     if (!MAIN || !x) return;
     if (x.st === "lock") { logout("expired"); return; }
     if (!x.data) return;
-    HB = x.data; if (x.cfg) { CFG = x.cfg; applyCfg(); }
+    HB = x.data; svgSet(x.svg); if (x.cfg) { CFG = x.cfg; applyCfg(); }
     if (typeof offSave === "function") { NET.cached = 0; NET.lastSave = 0; offSave(x); if (NET.off) netBar(true); }
     if (typeof xvNoLoad === "function") xvNoLoad(x.wno);
     if (typeof edBaseChanged === "function") edBaseChanged();
@@ -6632,7 +6683,7 @@ function enterMain(r) {
   stopPolls();
   LG.wd = false;
   OUTED = false;
-  HB = r.data; CFG = r.cfg || CFG || {}; ME = r.me || {}; IS_DEV = r.st === "dev"; if (r.v) BACKV = String(r.v);
+  HB = r.data; svgSet(r.svg); CFG = r.cfg || CFG || {}; ME = r.me || {}; IS_DEV = r.st === "dev"; if (r.v) BACKV = String(r.v);
   if (IS_DEV && !ONCE) keyDev();
   setTimeout(pkOffer, 1500);
   if (typeof offSave === "function") { if (r.cached) NET.cached = 1; else { NET.cached = 0; NET.lastSave = 0; offSave(r); } }
@@ -8044,7 +8095,7 @@ function webCatalogPano(parent, cat, hb, o) {
   wrap._api = api;
   return wrap;
 }
-function cssUrl(u) { return 'url("' + String(u || "").replace(/["\\\n\r]/g, "") + '")'; }
+function cssUrl(u) { u = svgOf(u) || u; return 'url("' + String(u || "").replace(/["\\\n\r]/g, "") + '")'; }
 function chIco(c, hb) { var o = _yzChIcons_(hb || HB); return (c && o[c.id]) || "📘"; }
 function chBgUrl(c) { return _yzChBg_(c); }
 function webChapterCard(c, n, o) {
@@ -16967,7 +17018,7 @@ function refreshForEdit() {
     if (!x || x.st === "lock") { logout("expired"); return; }
     if (!x.data) { toast("❌ 重新載入失敗"); return; }
     var cur = ED && ED.cur, mode = ED && ED.mode;
-    HB = x.data; edReset(); edPick(cur, mode); renderEdit(); toast("已重新載入最新的內容");
+    HB = x.data; svgSet(x.svg); edReset(); edPick(cur, mode); renderEdit(); toast("已重新載入最新的內容");
   }, function (e) { toast("❌ " + e.message); });
 }
 function discardEd() {
