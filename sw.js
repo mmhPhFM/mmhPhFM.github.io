@@ -2,7 +2,7 @@
 // 只處理「這個網站自己的檔案」；別的網址一律不管。
 "use strict";
 
-var HB_VERSION = "24fed83064";
+var HB_VERSION = "d6481f7f15";
 var HB_CACHE_NAME = "hb-" + HB_VERSION;
 var HB_ASSET_FILES = ["hb.css?v=" + HB_VERSION, "hb3d.js?v=" + HB_VERSION, "hb.js?v=" + HB_VERSION];
 var HB_PAGE_FILES = ["hb.html", "index.html"];

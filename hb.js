@@ -5659,45 +5659,79 @@ function applyCfg() {
   YZ_CFG.webUrl = location.origin + location.pathname;
   IDLE_MS = Math.max(5, Math.min(240, +CFG.idle || 30)) * 6e4;
 }
-var SVGM = null, SVGOK = false, SVGBAD = 0, SVGOB = null;
+var SVGS = null, SVGOK = false, SVGBLOB = {}, SVGWANT = {}, SVGFAIL = {}, SVGQ = [], SVGT = 0, SVGRUN = 0, SVGOB = null;
 var SVG_RE = /^https:\/\/(?:drive\.google\.com\/thumbnail\?id=|lh3\.googleusercontent\.com\/d\/)([A-Za-z0-9_-]{10,80})(?:&sz=w\d{1,4})?$/;
+var SVG_CN = "yzsvg-1";
 function svgSet(s) {
-  var ok = !!(s && s.m && typeof s.m === "object" && typeof s.u === "string" && /^https:\/\/[a-z0-9.-]+\.google(?:usercontent)?\.com\//.test(s.u));
-  SVGM = ok ? { u: s.u, s: typeof s.s === "string" ? s.s : "", m: s.m } : null;
-  if (!SVGM) { SVGOK = false; return; }
-  if (SVGOK) return;
-  var k = Object.keys(SVGM.m)[0], u = k ? svgOf("https://lh3.googleusercontent.com/d/" + k, true) : "";
-  if (!u) return;
-  var im = new Image();
-  im.onload = function () { if (SVGM && im.naturalWidth > 0) { SVGOK = true; svgWatch(); svgAll(document.body); } };
-  im.onerror = function () { SVGOK = false; };
-  im.src = u;
+  var ids = s && s.api && Array.isArray(s.ids) ? s.ids : null;
+  if (!ids || !ids.length) { SVGS = null; SVGOK = false; return; }
+  SVGS = {}; ids.forEach(function (id) { if (typeof id === "string" && /^[A-Za-z0-9_-]{10,80}$/.test(id)) SVGS[id] = 1; });
+  SVGOK = true; svgWatch(); svgAll(document.body);
 }
-function svgOf(u, any) {
-  if (!SVGM || (!SVGOK && !any)) return "";
-  var m = SVG_RE.exec(String(u || "")); if (!m) return "";
-  var id = SVGM.m[m[1]];
-  return typeof id === "string" && /^[A-Za-z0-9_-]{10,80}$/.test(id) ? SVGM.u + id + SVGM.s : "";
-}
+function svgId(u) { if (!SVGOK || !SVGS) return ""; var m = SVG_RE.exec(String(u || "")); return m && SVGS[m[1]] && !SVGFAIL[m[1]] ? m[1] : ""; }
+function svgOf(u) { var id = svgId(u); if (!id) return ""; if (SVGBLOB[id]) return SVGBLOB[id]; svgNeed(id); return ""; }
 function svgPre(im, v) {
-  var s = svgOf(v); if (!s) return v;
-  im.setAttribute("data-yo", v); im.setAttribute("data-ys", s);
-  if (!im._yzSv) { im._yzSv = 1; im.addEventListener("error", svgBack); }
-  return s;
+  var id = svgId(v); if (!id) return v;
+  if (SVGBLOB[id]) { im.setAttribute("data-yo", v); if (!im._yzSv) { im._yzSv = 1; im.addEventListener("error", svgBack); } return SVGBLOB[id]; }
+  im.setAttribute("data-yw", id); svgNeed(id); return v;
 }
 function svgBack(e) {
-  var im = e.target, o = im.getAttribute("data-yo"), s = im.getAttribute("data-ys");
-  if (!o || !s || im.getAttribute("src") !== s) return;
-  im.setAttribute("data-yn", o); im.removeAttribute("data-ys"); im.setAttribute("src", o);
-  if (++SVGBAD >= 3) SVGOK = false;
+  var im = e.target, o = im.getAttribute("data-yo"), cur = im.getAttribute("src") || "";
+  if (!o || cur.indexOf("blob:") !== 0) return;
+  var id = svgId(o); if (id) SVGFAIL[id] = 1;
+  im.removeAttribute("data-yo"); im.setAttribute("src", o);
 }
 function svgImg(im) {
   if (!SVGOK || !im || im.tagName !== "IMG") return;
-  var cur = im.getAttribute("src") || "";
-  if (!cur || cur === im.getAttribute("data-ys") || cur === im.getAttribute("data-yn")) return;
+  var cur = im.getAttribute("src") || ""; if (!cur || cur.indexOf("blob:") === 0) return;
   var s = svgPre(im, cur); if (s !== cur) im.setAttribute("src", s);
 }
 function svgAll(root) { if (root && root.querySelectorAll) Array.prototype.forEach.call(root.querySelectorAll("img[src]"), svgImg); }
+function svgGot(id, url) {
+  SVGBLOB[id] = url;
+  Array.prototype.forEach.call(document.querySelectorAll('img[data-yw="' + id + '"]'), function (im) {
+    im.removeAttribute("data-yw");
+    var cur = im.getAttribute("src") || "";
+    if (svgId(cur) !== id) return;
+    im.setAttribute("data-yo", cur); if (!im._yzSv) { im._yzSv = 1; im.addEventListener("error", svgBack); }
+    im.setAttribute("src", url);
+  });
+}
+function svgUrlOf(txt) { return URL.createObjectURL(new Blob([txt], { type: "image/svg+xml" })); }
+function svgKey(id) { return new URL("__yzsvg/" + id, location.href).href; }
+function svgNeed(id) {
+  if (SVGWANT[id] || SVGFAIL[id]) return; SVGWANT[id] = 1;
+  var hasC = false; try { hasC = !!(window.caches && caches.open); } catch (e) { hasC = false; }
+  if (!hasC) { svgPush(id); return; }
+  caches.open(SVG_CN).then(function (c) { return c.match(svgKey(id)); }).then(function (r) { return r ? r.text() : ""; }).then(function (t) {
+    if (t && /^<svg[\s>]/.test(t)) svgGot(id, svgUrlOf(t)); else svgPush(id);
+  }, function () { svgPush(id); });
+}
+function svgPush(id) { SVGQ.push(id); if (!SVGT) SVGT = setTimeout(svgFlush, 60); }
+function svgFlush() {
+  SVGT = 0;
+  while (SVGQ.length && SVGRUN < 2) {
+    var ids = SVGQ.splice(0, 4); SVGRUN++;
+    (function (ids) {
+      call("hbSvg", [ids], { ms: 60000 }).then(function (r) {
+        var s = r && r.s || {};
+        if (r && r.off) SVGOK = false;
+        ids.forEach(function (id) {
+          var t = s[id];
+          if (typeof t !== "string" || !/^<svg[\s>]/.test(t)) { if (!r || !r.slow) SVGFAIL[id] = 1; else delete SVGWANT[id]; return; }
+          svgGot(id, svgUrlOf(t));
+          try { if (window.caches) caches.open(SVG_CN).then(function (c) { return c.put(svgKey(id), new Response(t, { headers: { "Content-Type": "image/svg+xml" } })); }).catch(function () {}); } catch (e) {  }
+        });
+      }, function () { ids.forEach(function (id) { SVGFAIL[id] = 1; }); }).then(function () { SVGRUN--; if (SVGQ.length && !SVGT) SVGT = setTimeout(svgFlush, 60); });
+    })(ids);
+  }
+}
+function svgWipe() {
+  SVGS = null; SVGOK = false; SVGQ = []; SVGWANT = {}; SVGFAIL = {};
+  for (var k in SVGBLOB) { try { URL.revokeObjectURL(SVGBLOB[k]); } catch (e) {  } }
+  SVGBLOB = {};
+  try { if (window.caches) caches.delete(SVG_CN).catch(function () {}); } catch (e) {  }
+}
 function svgWatch() {
   if (SVGOB || !window.MutationObserver || !document.body) return;
   SVGOB = new MutationObserver(function (list) {
@@ -6924,6 +6958,7 @@ function logout(why) {
   if (IS_DEV && typeof qeKeep === "function") { KEEP_QE = qeKeep() || KEEP_QE; qeDrop(); }
   MAIN = false; OUTED = true;
   if (typeof offClear === "function") { offClear(); NET.cached = 0; }
+  svgWipe();
   var lgn = $("#lgnote"); if (lgn) lgn.remove();
   guardSync();
   lockClean();
